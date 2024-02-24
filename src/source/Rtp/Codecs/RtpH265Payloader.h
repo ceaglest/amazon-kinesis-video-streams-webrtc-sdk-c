@@ -10,35 +10,55 @@ H265 RTP Payloader include file
 extern "C" {
 #endif
 
-// TODO: Add correct defines for the H.265 packet types.
-#define FU_A_HEADER_SIZE     2
-#define FU_B_HEADER_SIZE     4
-#define STAP_A_HEADER_SIZE   1
-#define STAP_B_HEADER_SIZE   3
-#define SINGLE_U_HEADER_SIZE 1
-#define FU_A_INDICATOR       28
-#define FU_B_INDICATOR       29
-#define STAP_A_INDICATOR     24
-#define STAP_B_INDICATOR     25
-#define NAL_TYPE_MASK        31
+#define H265_RTP_PAYLOAD_HEADER_SIZE                    2
+#define H265_NALU_HEADER_NAL_UNIT_TYPE_MASK             (UINT8) 0x7E
+#define H265_NALU_HEADER_NUH_LAYER_ID_MASK              (UINT16) 0x01F8
+#define H265_NALU_HEADER_NUH_TEMPORAL_ID_PLUS1_MASK     (UINT16) 0x0007
 
 /*
- *   0                   1                   2                   3
- *   0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
- *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *  | FU indicator  |   FU header   |                               |
- *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+                               |
- *  |                                                               |
- *  |                         FU payload                            |
- *  |                                                               |
- *  |                               +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
- *  |                               :...OPTIONAL RTP padding        |
- *  +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ * Payload Structures
+ * Four different payload structures are defined in rfc7798-4.4.
+ * https://datatracker.ietf.org/doc/html/rfc7798#section-4.4
+ *
+ * 1. Single NAL unit packet
+ * -------------------------
+ *
+ * 0                   1                   2                   3
+ * 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
+ * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ * |           PayloadHdr          |      DONL (conditional)       |
+ * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ * |                                                               |
+ * |                  NAL unit payload data                        |
+ * |                                                               |
+ * |                               +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ * |                               :...OPTIONAL RTP padding        |
+ * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+ *
+ * 2. Aggregation Packets (APs)
+ * ----------------------------
+ *
+ * TODO - An AP aggregates NAL units within one access unit.
+ *
+ * Useful to reduce the packet overhead required to send IDR AUs with in-band
+ * parameter sets (SPS, PPS, VPS). The parameter sets must be repeated in-band
+ * with each IDR if they are not signaled out of band in the SDP.
+ *
+ * 3. Fragmentation Units (FUs)
+ * ----------------------------
+ *
+ * TODO - Convey a single NALU via multiple RTP packets across MTU boundaries.
+ *
+ * 4. PACI Packet
+ * --------------
+ *
+ * TODO - Useful for embedding extensible control information like
+ * Temporal Scalability Control Information (TSCI).
  */
 
 STATUS createPayloadForH265(UINT32, PBYTE, UINT32, PBYTE, PUINT32, PUINT32, PUINT32);
 STATUS getNextNaluLength(PBYTE, UINT32, PUINT32, PUINT32);
-STATUS createPayloadFromNalu(UINT32, PBYTE, UINT32, PPayloadArray, PUINT32, PUINT32);
+STATUS createH265PayloadFromNalu(UINT32, PBYTE, UINT32, PPayloadArray, PUINT32, PUINT32);
 
 #ifdef __cplusplus
 }

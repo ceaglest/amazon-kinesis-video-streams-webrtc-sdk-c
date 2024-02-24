@@ -39,6 +39,7 @@ STATUS createPayloadForH265(UINT32 mtu,
     payloadArray.payloadSubLength = pPayloadSubLength;
 
     do {
+        // TODO: Is the NALU length calculation valid for H.265?
         CHK_STATUS(getNextNaluLength(curPtrInNalus, remainNalusLength, &startIndex, &nextNaluLength));
 
         curPtrInNalus += startIndex;
@@ -48,11 +49,11 @@ STATUS createPayloadForH265(UINT32 mtu,
         CHK(remainNalusLength != 0, retStatus);
 
         if (sizeCalculationOnly) {
-            CHK_STATUS(createPayloadFromNalu(mtu, curPtrInNalus, nextNaluLength, NULL, &singlePayloadLength, &singlePayloadSubLenSize));
+            CHK_STATUS(createH265PayloadFromNalu(mtu, curPtrInNalus, nextNaluLength, NULL, &singlePayloadLength, &singlePayloadSubLenSize));
             payloadArray.payloadLength += singlePayloadLength;
             payloadArray.payloadSubLenSize += singlePayloadSubLenSize;
         } else {
-            CHK_STATUS(createPayloadFromNalu(mtu, curPtrInNalus, nextNaluLength, &payloadArray, &singlePayloadLength, &singlePayloadSubLenSize));
+            CHK_STATUS(createH265PayloadFromNalu(mtu, curPtrInNalus, nextNaluLength, &payloadArray, &singlePayloadLength, &singlePayloadSubLenSize));
             payloadArray.payloadBuffer += singlePayloadLength;
             payloadArray.payloadSubLength += singlePayloadSubLenSize;
             payloadArray.maxPayloadLength -= singlePayloadLength;
@@ -72,6 +73,80 @@ CleanUp:
     if (pPayloadSubLenSize != NULL && pPayloadLength != NULL) {
         *pPayloadLength = payloadArray.payloadLength;
         *pPayloadSubLenSize = payloadArray.payloadSubLenSize;
+    }
+
+    LEAVES();
+    return retStatus;
+}
+
+STATUS createH265PayloadFromNalu(UINT32 mtu, PBYTE nalu, UINT32 naluLength, PPayloadArray pPayloadArray, PUINT32 filledLength, PUINT32 filledSubLenSize)
+{
+    ENTERS();
+    STATUS retStatus = STATUS_SUCCESS;
+    PBYTE pPayload = NULL;
+    UINT8 naluType = 0;
+    UINT8 nuhLayerId = 0;
+    UINT8 nuhTemporalId = 0;
+    UINT32 maxPayloadSize = 0;
+    UINT32 curPayloadSize = 0;
+    UINT32 remainingNaluLength = naluLength;
+    UINT32 payloadLength = 0;
+    UINT32 payloadSubLenSize = 0;
+    PBYTE pCurPtrInNalu = NULL;
+    BOOL sizeCalculationOnly = (pPayloadArray == NULL);
+
+    CHK(nalu != NULL && filledLength != NULL && filledSubLenSize != NULL, STATUS_NULL_ARG);
+    sizeCalculationOnly = (pPayloadArray == NULL);
+    CHK(sizeCalculationOnly || (pPayloadArray->payloadSubLength != NULL && pPayloadArray->payloadBuffer != NULL), STATUS_NULL_ARG);
+    CHK(mtu > H265_RTP_PAYLOAD_HEADER_SIZE, STATUS_RTP_INPUT_MTU_TOO_SMALL);
+
+    // TODO: Parse nuh_layer_id and nuh_temporal_id_plus1.
+    /*
+     nal_unit_header {
+       forbidden_zero_bit: 0
+       nal_unit_type: 32
+       nuh_layer_id: 0
+       nuh_temporal_id_plus1: 1
+     }
+     * forbidden_zero_bit  f(1)
+     * nal_unit_type  u(6)
+     * nuh_layer_id  u(6)
+     * nuh_temporal_id_plus1  u(3)
+     */
+    naluType = (*nalu & H265_NALU_HEADER_NAL_UNIT_TYPE_MASK) >> 1;
+
+    if (!sizeCalculationOnly) {
+        pPayload = pPayloadArray->payloadBuffer;
+    }
+
+    if (naluLength <= mtu) {
+        payloadLength += naluLength;
+        payloadSubLenSize++;
+
+        if (!sizeCalculationOnly) {
+            CHK(payloadSubLenSize <= pPayloadArray->maxPayloadSubLenSize && payloadLength <= pPayloadArray->maxPayloadLength,
+                STATUS_BUFFER_TOO_SMALL);
+
+            // Single NALU https://tools.ietf.org/html/rfc7798#section-4.4.1
+            // The DONL field is not present because the library does not negotiate frame reordering.
+            MEMCPY(pPayload, nalu, naluLength);
+            pPayloadArray->payloadSubLength[payloadSubLenSize - 1] = naluLength;
+            pPayload += pPayloadArray->payloadSubLength[payloadSubLenSize - 1];
+        }
+    } else {
+        // TODO: Implement remaining payload types.
+        assert(1);
+    }
+
+CleanUp:
+    if (STATUS_FAILED(retStatus) && sizeCalculationOnly) {
+        payloadLength = 0;
+        payloadSubLenSize = 0;
+    }
+
+    if (filledLength != NULL && filledSubLenSize != NULL) {
+        *filledLength = payloadLength;
+        *filledSubLenSize = payloadSubLenSize;
     }
 
     LEAVES();
