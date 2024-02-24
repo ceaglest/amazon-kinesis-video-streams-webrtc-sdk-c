@@ -252,7 +252,7 @@ STATUS writeFrame(PRtcRtpTransceiver pRtcRtpTransceiver, PFrame pFrame)
             break;
         
         case RTC_CODEC_H265_TX_MODE_SRST:
-            // rtpPayloadFunc = createPayloadForH265;
+            rtpPayloadFunc = createPayloadForH265;
             rtpTimestamp = CONVERT_TIMESTAMP_TO_RTP(VIDEO_CLOCKRATE, pFrame->presentationTs);
             break;
 
