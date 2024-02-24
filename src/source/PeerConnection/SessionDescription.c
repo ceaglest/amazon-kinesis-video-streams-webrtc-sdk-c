@@ -242,7 +242,7 @@ STATUS setPayloadTypesFromOffer(PHashTable codecTable, PHashTable rtxTable, PSes
                 h265fmtpScore = getH265FmtpScore(fmtp);
                 
                 // When there's no best match, the last compatible fmtp will be chosen.
-                if (h265fmtpScore >= bestH265FmtpScore) {
+                if (h265fmtpScore > 0 && h265fmtpScore >= bestH265FmtpScore) {
                     DLOGV("Found H265 payload type %" PRId64 " with score %lu: %s", parsedPayloadType, h265fmtpScore, fmtp);
                     CHK_STATUS(
                         hashTableUpsert(codecTable, RTC_CODEC_H265_TX_MODE_SRST, parsedPayloadType));
