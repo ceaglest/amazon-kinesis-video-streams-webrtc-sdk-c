@@ -250,6 +250,11 @@ STATUS writeFrame(PRtcRtpTransceiver pRtcRtpTransceiver, PFrame pFrame)
             rtpPayloadFunc = createPayloadForVP8;
             rtpTimestamp = CONVERT_TIMESTAMP_TO_RTP(VIDEO_CLOCKRATE, pFrame->presentationTs);
             break;
+        
+        case RTC_CODEC_H265_TX_MODE_SRST:
+            // rtpPayloadFunc = createPayloadForH265;
+            rtpTimestamp = CONVERT_TIMESTAMP_TO_RTP(VIDEO_CLOCKRATE, pFrame->presentationTs);
+            break;
 
         default:
             CHK(FALSE, STATUS_NOT_IMPLEMENTED);

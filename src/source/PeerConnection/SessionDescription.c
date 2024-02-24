@@ -138,6 +138,7 @@ STATUS setPayloadTypesForOffer(PHashTable codecTable)
     CHK_STATUS(hashTableUpsert(codecTable, RTC_CODEC_VP8, DEFAULT_PAYLOAD_VP8));
     CHK_STATUS(hashTableUpsert(codecTable, RTC_CODEC_OPUS, DEFAULT_PAYLOAD_OPUS));
     CHK_STATUS(hashTableUpsert(codecTable, RTC_CODEC_H264_PROFILE_42E01F_LEVEL_ASYMMETRY_ALLOWED_PACKETIZATION_MODE, DEFAULT_PAYLOAD_H264));
+    // TODO: Implement reception of H.265 or add the codec to offers that contain recvonly video.
 
 CleanUp:
     return retStatus;
@@ -226,6 +227,14 @@ STATUS setPayloadTypesFromOffer(PHashTable codecTable, PHashTable rtxTable, PSes
                 CHK_STATUS(STRTOUI64(attributeValue, end - 1, 10, &parsedPayloadType));
                 CHK_STATUS(hashTableUpsert(codecTable, RTC_CODEC_ALAW, parsedPayloadType));
             }
+            
+            // TODO: Consider the a=fmtp line? It is not set by libwebrtc but is defined in rfc7798-7.1.
+            // Notably, the endpoint will only support the default SRST transmission mode.
+            CHK_STATUS(hashTableContains(codecTable, RTC_CODEC_H265_TX_MODE_SRST, &supportCodec));
+            if (supportCodec && (end = STRSTR(attributeValue, VP8_VALUE)) != NULL) {
+                CHK_STATUS(STRTOUI64(attributeValue, end - 1, 10, &parsedPayloadType));
+                CHK_STATUS(hashTableUpsert(codecTable, RTC_CODEC_H265_TX_MODE_SRST, parsedPayloadType));
+            }
 
             if ((end = STRSTR(attributeValue, RTX_CODEC_VALUE)) != NULL) {
                 CHK_STATUS(STRTOUI64(end + STRLEN(RTX_CODEC_VALUE), NULL, 10, &parsedPayloadType));
@@ -255,6 +264,14 @@ STATUS setPayloadTypesFromOffer(PHashTable codecTable, PHashTable rtxTable, PSes
                 CHK_STATUS(hashTableGet(codecTable, RTC_CODEC_VP8, &hashmapPayloadType));
                 if (aptVal == hashmapPayloadType) {
                     CHK_STATUS(hashTableUpsert(rtxTable, RTC_RTX_CODEC_VP8, fmtpVal));
+                }
+            }
+
+            CHK_STATUS(hashTableContains(codecTable, RTC_CODEC_H265_TX_MODE_SRST, &supportCodec));
+            if (supportCodec) {
+                CHK_STATUS(hashTableGet(codecTable, RTC_CODEC_H265_TX_MODE_SRST, &hashmapPayloadType));
+                if (aptVal == hashmapPayloadType) {
+                    CHK_STATUS(hashTableUpsert(rtxTable, RTC_RTX_CODEC_H265_TX_MODE_SRST, fmtpVal));
                 }
             }
         }
@@ -416,6 +433,8 @@ STATUS populateSingleMediaSection(PKvsPeerConnection pKvsPeerConnection, PKvsRtp
                                      &rtxPayloadType);
         } else if (pRtcMediaStreamTrack->codec == RTC_CODEC_VP8) {
             retStatus = hashTableGet(pKvsPeerConnection->pRtxTable, RTC_RTX_CODEC_VP8, &rtxPayloadType);
+        } else if (pRtcMediaStreamTrack->codec == RTC_CODEC_H265_TX_MODE_SRST) {
+            retStatus = hashTableGet(pKvsPeerConnection->pRtxTable, RTC_RTX_CODEC_H265_TX_MODE_SRST, &rtxPayloadType);
         } else {
             retStatus = STATUS_HASH_KEY_NOT_PRESENT;
         }
@@ -653,6 +672,23 @@ STATUS populateSingleMediaSection(PKvsPeerConnection pKvsPeerConnection, PKvsRtp
         STRCPY(pSdpMediaDescription->sdpAttributes[attributeCount].attributeName, "rtpmap");
         SPRINTF(pSdpMediaDescription->sdpAttributes[attributeCount].attributeValue, "%" PRId64 " " ALAW_VALUE, payloadType);
         attributeCount++;
+    } else if (pRtcMediaStreamTrack->codec == RTC_CODEC_H265_TX_MODE_SRST) {
+        STRCPY(pSdpMediaDescription->sdpAttributes[attributeCount].attributeName, "rtpmap");
+        SPRINTF(pSdpMediaDescription->sdpAttributes[attributeCount].attributeValue, "%" PRId64 " " VP8_VALUE, payloadType);
+        attributeCount++;
+        
+        // TODO: Handle an fmtp line associated with the primary video codec.
+        
+        if (containRtx) {
+            CHK_STATUS(hashTableGet(pKvsPeerConnection->pRtxTable, RTC_RTX_CODEC_H265_TX_MODE_SRST, &rtxPayloadType));
+            STRCPY(pSdpMediaDescription->sdpAttributes[attributeCount].attributeName, "rtpmap");
+            SPRINTF(pSdpMediaDescription->sdpAttributes[attributeCount].attributeValue, "%" PRId64 " " RTX_VALUE, rtxPayloadType);
+            attributeCount++;
+            
+            STRCPY(pSdpMediaDescription->sdpAttributes[attributeCount].attributeName, "fmtp");
+            SPRINTF(pSdpMediaDescription->sdpAttributes[attributeCount].attributeValue, "%" PRId64 " apt=%" PRId64 "", rtxPayloadType, payloadType);
+            attributeCount++;
+        }
     } else if (pRtcMediaStreamTrack->codec == RTC_CODEC_UNKNOWN) {
         CHK_STATUS(hashTableGet(pUnknownCodecRtpmapTable, unknownCodecHashTableKey, (PUINT64) &rtpMapValue));
         STRCPY(pSdpMediaDescription->sdpAttributes[attributeCount].attributeName, "rtpmap");
@@ -1106,6 +1142,9 @@ STATUS findTransceiversByRemoteDescription(PKvsPeerConnection pKvsPeerConnection
                 } else if (STRSTR(attributeValue, VP8_VALUE) != NULL) {
                     supportCodec = TRUE;
                     rtcCodec = RTC_CODEC_VP8;
+                } else if (STRSTR(attributeValue, H265_VALUE) != NULL) {
+                    supportCodec = TRUE;
+                    rtcCodec = RTC_CODEC_H265_TX_MODE_SRST;
                 } else {
                     supportCodec = FALSE;
                 }
@@ -1238,7 +1277,7 @@ STATUS setReceiversSsrc(PSessionDescription pRemoteSessionDescription, PDoubleLi
                     CHK_STATUS(doubleListGetNodeData(pCurNode, &data));
                     pKvsRtpTransceiver = (PKvsRtpTransceiver) data;
                     codec = pKvsRtpTransceiver->sender.track.codec;
-                    isVideoCodec = (codec == RTC_CODEC_VP8 || codec == RTC_CODEC_H264_PROFILE_42E01F_LEVEL_ASYMMETRY_ALLOWED_PACKETIZATION_MODE);
+                    isVideoCodec = (codec == RTC_CODEC_VP8 || codec == RTC_CODEC_H264_PROFILE_42E01F_LEVEL_ASYMMETRY_ALLOWED_PACKETIZATION_MODE || codec == RTC_CODEC_H265_TX_MODE_SRST);
                     isAudioCodec = (codec == RTC_CODEC_MULAW || codec == RTC_CODEC_ALAW || codec == RTC_CODEC_OPUS);
 
                     if (pKvsRtpTransceiver->jitterBufferSsrc == 0 &&

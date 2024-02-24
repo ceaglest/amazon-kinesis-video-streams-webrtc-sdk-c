@@ -30,6 +30,7 @@ extern "C" {
 #define MID_KEY       "mid"
 
 #define H264_VALUE      "H264/90000"
+#define H265_VALUE      "H265/90000"
 #define OPUS_VALUE      "opus/48000"
 #define VP8_VALUE       "VP8/90000"
 #define MULAW_VALUE     "PCMU/8000"
