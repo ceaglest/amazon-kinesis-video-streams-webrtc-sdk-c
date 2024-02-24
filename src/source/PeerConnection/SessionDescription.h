@@ -67,6 +67,7 @@ extern "C" {
 // Reference: https://tools.ietf.org/html/rfc6184#section-8.1
 #define H264_FMTP_SUBPROFILE_MASK    0xFFFF00
 #define H264_FMTP_PROFILE_LEVEL_MASK 0x0000FF
+#define H265_LEVEL_31 (UINT64) 93
 
 #define DTLS_ROLE_ACTPASS (PCHAR) "actpass"
 #define DTLS_ROLE_ACTIVE  (PCHAR) "active"

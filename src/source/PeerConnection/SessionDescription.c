@@ -1,6 +1,10 @@
 #define LOG_CLASS "SessionDescription"
 #include "../Include_i.h"
 
+// To prevent conflicting types.
+UINT64 getH264FmtpScore(PCHAR fmtp);
+UINT64 getH265FmtpScore(PCHAR fmtp);
+
 STATUS serializeSessionDescriptionInit(PRtcSessionDescriptionInit pSessionDescriptionInit, PCHAR sessionDescriptionJSON,
                                        PUINT32 sessionDescriptionJSONLen)
 {
@@ -162,11 +166,13 @@ STATUS setPayloadTypesFromOffer(PHashTable codecTable, PHashTable rtxTable, PSes
     UINT32 tokenLen, i, aptFmtpValCount;
     PCHAR fmtp;
     UINT64 fmtpScore, bestFmtpScore;
+    UINT64 h265fmtpScore, bestH265FmtpScore;
 
     for (currentMedia = 0; currentMedia < pSessionDescription->mediaCount; currentMedia++) {
         pMediaDescription = &(pSessionDescription->mediaDescriptions[currentMedia]);
         aptFmtpValCount = 0;
         bestFmtpScore = 0;
+        bestH265FmtpScore = 0;
         attributeValue = pMediaDescription->mediaName;
         do {
             if ((end = STRCHR(attributeValue, ' ')) != NULL) {
@@ -228,12 +234,19 @@ STATUS setPayloadTypesFromOffer(PHashTable codecTable, PHashTable rtxTable, PSes
                 CHK_STATUS(hashTableUpsert(codecTable, RTC_CODEC_ALAW, parsedPayloadType));
             }
             
-            // TODO: Consider the a=fmtp line? It is not set by libwebrtc but is defined in rfc7798-7.1.
-            // Notably, the endpoint will only support the default SRST transmission mode.
             CHK_STATUS(hashTableContains(codecTable, RTC_CODEC_H265_TX_MODE_SRST, &supportCodec));
             if (supportCodec && (end = STRSTR(attributeValue, VP8_VALUE)) != NULL) {
                 CHK_STATUS(STRTOUI64(attributeValue, end - 1, 10, &parsedPayloadType));
-                CHK_STATUS(hashTableUpsert(codecTable, RTC_CODEC_H265_TX_MODE_SRST, parsedPayloadType));
+                fmtp = fmtpForPayloadType(parsedPayloadType, pSessionDescription);
+                h265fmtpScore = getH265FmtpScore(fmtp);
+                
+                // When there's no best match, the last compatible fmtp will be chosen.
+                if (h265fmtpScore >= bestH265FmtpScore) {
+                    DLOGV("Found H265 payload type %" PRId64 " with score %lu: %s", parsedPayloadType, h265fmtpScore, fmtp);
+                    CHK_STATUS(
+                        hashTableUpsert(codecTable, RTC_CODEC_H265_TX_MODE_SRST, parsedPayloadType));
+                    bestH265FmtpScore = h265fmtpScore;
+                }
             }
 
             if ((end = STRSTR(attributeValue, RTX_CODEC_VALUE)) != NULL) {
@@ -396,6 +409,84 @@ UINT64 getH264FmtpScore(PCHAR fmtp)
 
     if (readHexValue(fmtp, "level-asymmetry-allowed=", &levelAsymmetry) && levelAsymmetry == 1) {
         score++;
+    }
+
+    return score;
+}
+
+/*
+ * Scores the provided fmtp string based on this library's ability to
+ * process various types of H265 streams. A score of 0 indicates an
+ * incompatible fmtp line. Beyond this, a higher score indicates more
+ * compatibility with the desired characteristics, tx-mode=SRST,
+ * sprop-max-don-diff=0, and inbound match with our preferred
+ * tier-flag / level-id / max-recv-level-id.
+ *
+ * At some future time, it may be worth expressing this as a true distance
+ * function as defined here, although dealing with infinite floating point
+ * values can get tricky:
+ * https://www.w3.org/TR/mediacapture-streams/#dfn-fitness-distance
+ */
+UINT64 getH265FmtpScore(PCHAR fmtp)
+{
+    // If no tier-flag is present, a value of 0 MUST be inferred;
+    UINT32 tierFlag = 0;
+    // if no level-id is present, a value of 93 (i.e., level 3.1) MUST be inferred.
+    UINT32 levelId = H265_LEVEL_31;
+    // When not present, the value of sprop-max-don-diff is inferred to be equal to 0.
+    UINT32 spropMaxDonDiff = 0;
+    // When not present, the value of tx-mode is inferred to be equal to "SRST".
+    PCHAR txMode = "SRST";
+    UINT32 maxRecvLevelId = 0;
+    UINT64 score = 0;
+
+    // No ftmp match found.
+    if (fmtp == NULL) {
+        return score;
+    }
+
+    // Currently, the tx-mode must be 'SRST' - single RTP stream on a single Media Transport,
+    // as the library cannot negotiate multiple video RTP streams ('MRST' or 'MRMT')
+    // https://tools.ietf.org/html/rfc7798#section-4.3
+    /*
+    readStringValue(fmtp, "tx-mode=", &txMode));
+    if (txMode != "SRST") {
+        return score;
+    }
+    */
+        
+    // The library does not support picture re-ordering (B-frames).
+    // Re-ordering is not typically used for RTC because it adds both encoder and decoder delay.
+    readHexValue(fmtp, "sprop-max-don-diff=", &spropMaxDonDiff);
+    if (spropMaxDonDiff > 0) {
+        return score;
+    }
+    
+    // SRST without frame reordering.
+    score += 1;
+
+    // https://datatracker.ietf.org/doc/html/rfc7798#section-7.1
+    // If max-recv-level-
+    // id is not present, the default level defined by level-id
+    // indicates the highest level the codec wishes to support.
+    // Otherwise, max-recv-level-id indicates the highest level the
+    // codec supports for receiving.
+    readHexValue(fmtp, "tier-flag=", &tierFlag);
+    bool hasLevelId = readHexValue(fmtp, "level-id=", &levelId);
+    bool hasMaxRecvLevelId = readHexValue(fmtp, "max-recv-level-id=", &maxRecvLevelId);
+    UINT32 maxSupportedLevel = levelId;
+    if (hasMaxRecvLevelId) {
+        maxSupportedLevel = maxRecvLevelId;
+    }
+
+    // The library prefers at least level 3.1.
+    if (maxSupportedLevel >= 93) {
+        score += 1;
+    }
+    
+    // The library prefers main tier to high tier.
+    if (tierFlag == 0) {
+        score += 1;
     }
 
     return score;
