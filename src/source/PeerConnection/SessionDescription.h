@@ -51,6 +51,8 @@ extern "C" {
 #define DEFAULT_PAYLOAD_ALAW_STR  (PCHAR) "8"
 
 #define DEFAULT_H264_FMTP   (PCHAR) "level-asymmetry-allowed=1;packetization-mode=1;profile-level-id=42e01f"
+// Being very explicit even though the default values are equivalent.
+#define DEFAULT_H265_FMTP   (PCHAR) "level-id=93;profile-id=1;sprop-max-don-diff=0;tier-flag=0;tx-mode=SRST"
 #define DEFAULT_OPUS_FMTP   (PCHAR) "minptime=10;useinbandfec=1"
 #define H264_PROFILE_42E01F 0x42e01f
 // profile-level-id:
@@ -68,6 +70,8 @@ extern "C" {
 #define H264_FMTP_SUBPROFILE_MASK    0xFFFF00
 #define H264_FMTP_PROFILE_LEVEL_MASK 0x0000FF
 #define H265_LEVEL_31 (UINT64) 93
+#define H265_MAIN_PROFILE_ID (UINT64) 1
+#define H265_MAIN_TIER_FLAG (UINT64) 0
 
 #define DTLS_ROLE_ACTPASS (PCHAR) "actpass"
 #define DTLS_ROLE_ACTIVE  (PCHAR) "active"

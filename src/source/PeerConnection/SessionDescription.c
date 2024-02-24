@@ -420,7 +420,7 @@ UINT64 getH264FmtpScore(PCHAR fmtp)
  * incompatible fmtp line. Beyond this, a higher score indicates more
  * compatibility with the desired characteristics, tx-mode=SRST,
  * sprop-max-don-diff=0, and inbound match with our preferred
- * tier-flag / level-id / max-recv-level-id.
+ * tier-flag / profile-id / level-id / max-recv-level-id.
  *
  * At some future time, it may be worth expressing this as a true distance
  * function as defined here, although dealing with infinite floating point
@@ -438,6 +438,8 @@ UINT64 getH265FmtpScore(PCHAR fmtp)
     // When not present, the value of tx-mode is inferred to be equal to "SRST".
     PCHAR txMode = "SRST";
     UINT32 maxRecvLevelId = 0;
+    // When profile-id is not present, a value of 1 (i.e., the Main profile) MUST be inferred.
+    UINT32 profileId = 1;
     UINT64 score = 0;
 
     // No ftmp match found.
@@ -479,13 +481,22 @@ UINT64 getH265FmtpScore(PCHAR fmtp)
         maxSupportedLevel = maxRecvLevelId;
     }
 
-    // The library prefers at least level 3.1.
-    if (maxSupportedLevel >= 93) {
+    // The library prefers at least level 3.1 which enables decoding of 1280x720 @ 30 frames / second.
+    if (maxSupportedLevel >= H265_LEVEL_31) {
         score += 1;
     }
     
-    // The library prefers main tier to high tier.
-    if (tierFlag == 0) {
+    // The library prefers main tier to high tier for RTC use cases.
+    if (tierFlag == H265_MAIN_TIER_FLAG) {
+        score += 1;
+    }
+    
+    // The library prefers Main profile (8 bits per channel, 4:2:0 chroma subsampling).
+    // Note: The Main10 profile is more efficient for native 10-bit 4:2:0 sources since dithering is skipped.
+    // However, the memory requirements for decoding 10-bit video are increased compared to 8-bit.
+    // TODO: How can this preference for profile-id be communicated to the encoder?
+    readHexValue(fmtp, "profile-id=", &profileId);
+    if (profileId == H265_MAIN_PROFILE_ID) {
         score += 1;
     }
 
