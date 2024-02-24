@@ -142,7 +142,8 @@ STATUS setPayloadTypesForOffer(PHashTable codecTable)
     CHK_STATUS(hashTableUpsert(codecTable, RTC_CODEC_VP8, DEFAULT_PAYLOAD_VP8));
     CHK_STATUS(hashTableUpsert(codecTable, RTC_CODEC_OPUS, DEFAULT_PAYLOAD_OPUS));
     CHK_STATUS(hashTableUpsert(codecTable, RTC_CODEC_H264_PROFILE_42E01F_LEVEL_ASYMMETRY_ALLOWED_PACKETIZATION_MODE, DEFAULT_PAYLOAD_H264));
-    // TODO: Implement reception of H.265 or add the codec to offers that contain recvonly video.
+    // TODO: Implement reception of H.265 or add the codec only to offers that contain recvonly video.
+    // CHK_STATUS(hashTableUpsert(codecTable, RTC_CODEC_H265_TX_MODE_SRST, DEFAULT_PAYLOAD_H265));
 
 CleanUp:
     return retStatus;
