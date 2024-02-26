@@ -1293,9 +1293,8 @@ STATUS addTransceiver(PRtcPeerConnection pPeerConnection, PRtcMediaStreamTrack p
             break;
 
         case RTC_CODEC_H265_TX_MODE_SRST:
-            // TODO: Implement de-payloading of SRST H.265 video transmissions.
+            depayFunc = depayH265FromRtpPayload;
             clockRate = VIDEO_CLOCKRATE;
-            CHK(FALSE, STATUS_NOT_IMPLEMENTED);
             break;
         
         default:

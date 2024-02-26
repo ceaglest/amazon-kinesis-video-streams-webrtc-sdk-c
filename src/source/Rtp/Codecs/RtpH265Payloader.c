@@ -213,3 +213,13 @@ CleanUp:
     return retStatus;
 }
 
+STATUS depayH265FromRtpPayload(PBYTE pRawPacket, UINT32 packetLength, PBYTE pNaluData, PUINT32 pNaluLength, PBOOL pIsStart) {
+    STATUS retStatus = STATUS_SUCCESS;
+
+    // TODO: Implement de-payloading of SRST H.265 video transmissions.
+    CHK(FALSE, STATUS_NOT_IMPLEMENTED);
+
+CleanUp:
+    LEAVES();
+    return retStatus;
+}

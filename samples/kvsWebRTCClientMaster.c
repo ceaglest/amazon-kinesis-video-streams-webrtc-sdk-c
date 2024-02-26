@@ -217,7 +217,6 @@ PVOID sendH265VideoPackets(PVOID args)
     Frame h265AnnexB;
     Frame accessUnit;
     UINT32 bitstreamSize;
-    CHAR filePath[MAX_PATH_LEN + 1];
     STATUS status;
     UINT32 i;
     UINT64 startTime, lastFrameTime, elapsed;
@@ -240,7 +239,7 @@ PVOID sendH265VideoPackets(PVOID args)
     h265AnnexB.frameData = pSampleConfiguration->pVideoFrameBuffer;
     h265AnnexB.size = bitstreamSize;
 
-    CHK_STATUS(readFrameFromDisk(h265AnnexB.frameData, &bitstreamSize, filePath));
+    CHK_STATUS(readFrameFromDisk(h265AnnexB.frameData, &bitstreamSize, SAMPLE_DEFAULT_H265_BITSTREAM_PATH));
     
     // TODO: Determine the encoder stats by the non-VCL NALUs, by filename convention or by a .csv manifest.
     // based on bitrate of samples/h265SampleBitstreams/sample.h265*
