@@ -236,7 +236,7 @@ STATUS setPayloadTypesFromOffer(PHashTable codecTable, PHashTable rtxTable, PSes
             }
             
             CHK_STATUS(hashTableContains(codecTable, RTC_CODEC_H265_TX_MODE_SRST, &supportCodec));
-            if (supportCodec && (end = STRSTR(attributeValue, VP8_VALUE)) != NULL) {
+            if (supportCodec && (end = STRSTR(attributeValue, H265_VALUE)) != NULL) {
                 CHK_STATUS(STRTOUI64(attributeValue, end - 1, 10, &parsedPayloadType));
                 fmtp = fmtpForPayloadType(parsedPayloadType, pSessionDescription);
                 h265fmtpScore = getH265FmtpScore(fmtp);
@@ -286,6 +286,7 @@ STATUS setPayloadTypesFromOffer(PHashTable codecTable, PHashTable rtxTable, PSes
                 CHK_STATUS(hashTableGet(codecTable, RTC_CODEC_H265_TX_MODE_SRST, &hashmapPayloadType));
                 if (aptVal == hashmapPayloadType) {
                     CHK_STATUS(hashTableUpsert(rtxTable, RTC_RTX_CODEC_H265_TX_MODE_SRST, fmtpVal));
+                    DLOGV("found apt type %" PRId64 " for fmtp %" PRId64, aptVal, fmtpVal);
                 }
             }
         }
@@ -443,9 +444,10 @@ UINT64 getH265FmtpScore(PCHAR fmtp)
     UINT32 profileId = 1;
     UINT64 score = 0;
 
-    // No ftmp match found.
+    // No ftmp line match found after H.265 PT. Assume the default valus.
     if (fmtp == NULL) {
-        return score;
+        // SRST, Main profile, Main Tier, Level 3.1, No Frame Re-ordering.
+        return 3;
     }
 
     // Currently, the tx-mode must be 'SRST' - single RTP stream on a single Media Transport,
