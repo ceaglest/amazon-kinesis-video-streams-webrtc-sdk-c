@@ -211,12 +211,13 @@ CleanUp:
 
 // TODO: Declaring a private function. Could it be made available directly to developers?
 STATUS getNextH265NaluLength(PBYTE nalus, UINT32 nalusLength, PUINT32 pStart, PUINT32 pNaluLength);
-#define H265_NALU_TYPE_AUD_NUT 35
-#define H265_NALU_TYPE_EOS_NUT 36
-#define H265_NALU_TYPE_EOB_NUT 37
+#define H265_NALU_TYPE_AUD_NUT (UINT8)35
+#define H265_NALU_TYPE_EOS_NUT (UINT8)36
+#define H265_NALU_TYPE_EOB_NUT (UINT8)37
 
 /*
  * Find the end of the Access Unit (AU) and pass the entire AU as a frame.
+ * Note: Access Unit Delimiters are required to be placed in the bitstream.
  *
  * Examples
  * --------
@@ -225,8 +226,6 @@ STATUS getNextH265NaluLength(PBYTE nalus, UINT32 nalusLength, PUINT32 pStart, PU
  * [ 0 [VPS] [SPS] [PPS] [SEI] [IDR] [AUD] ] [ 1 ... ]
  * Predicted (P) with a delimiter
  * [ N [P] [AUD] ] [ N + 1 ... [ .. ] ]
- * Predicted Slice (P) without a delimeter
- * [ N [P0] [P1] [P2] [P3] ] [ N + 1 ... [ .. ] ]
  */
 STATUS getNextH265AccessUnitLength(PBYTE nalus, UINT32 nalusLength, PUINT32 pStart, PUINT32 pNaluLength)
 {
@@ -234,6 +233,7 @@ STATUS getNextH265AccessUnitLength(PBYTE nalus, UINT32 nalusLength, PUINT32 pSta
     PBYTE curPtrInNalus = nalus;
     UINT32 remainNalusLength = nalusLength;
     UINT32 nextNaluLength = 0;
+    UINT32 accessUnitLength = 0;
     UINT32 startIndex = 0;
     bool endOfAccessUnit = false;
 
@@ -255,23 +255,26 @@ STATUS getNextH265AccessUnitLength(PBYTE nalus, UINT32 nalusLength, PUINT32 pSta
          * nuh_temporal_id_plus1  u(3)
          */
         UINT8 nalUnitTypeMask = (UINT8) 0x7E;
-        UINT8 naluType = ((*curPtrInNalus + startIndex) & nalUnitTypeMask) >> 1;
-        if (naluType == H265_NALU_TYPE_AUD_NUT || 
+        UINT8 naluType = (*(curPtrInNalus + startIndex) & nalUnitTypeMask) >> 1;
+        if (naluType == H265_NALU_TYPE_AUD_NUT ||
             naluType == H265_NALU_TYPE_EOS_NUT ||
             naluType == H265_NALU_TYPE_EOB_NUT) {
             endOfAccessUnit = true;
         }
         curPtrInNalus += startIndex + nextNaluLength;
         remainNalusLength -= startIndex + nextNaluLength;
+        accessUnitLength += startIndex + nextNaluLength;
     } while (!endOfAccessUnit);
 
-    // TODO: Return the entire access unit here.
-    *pStart = startIndex;
-    *pNaluLength = nextNaluLength;
-    
+    *pStart = 0;
+    *pNaluLength = accessUnitLength;
+    return (PVOID) (ULONG_PTR) retStatus;
+
 CleanUp:
     DLOGI("[KVS Master] Failed to parse H.265 access unit.");
     CHK_LOG_ERR(retStatus);
+    *pStart = 0;
+    *pNaluLength = 0;
 
     return (PVOID) (ULONG_PTR) retStatus;
 }
