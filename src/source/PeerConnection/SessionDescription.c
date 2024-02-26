@@ -779,7 +779,7 @@ STATUS populateSingleMediaSection(PKvsPeerConnection pKvsPeerConnection, PKvsRtp
         attributeCount++;
     } else if (pRtcMediaStreamTrack->codec == RTC_CODEC_H265_TX_MODE_SRST) {
         STRCPY(pSdpMediaDescription->sdpAttributes[attributeCount].attributeName, "rtpmap");
-        SPRINTF(pSdpMediaDescription->sdpAttributes[attributeCount].attributeValue, "%" PRId64 " " VP8_VALUE, payloadType);
+        SPRINTF(pSdpMediaDescription->sdpAttributes[attributeCount].attributeValue, "%" PRId64 " " H265_VALUE, payloadType);
         attributeCount++;
         
         // TODO: Handle an fmtp line associated with the primary video codec.
