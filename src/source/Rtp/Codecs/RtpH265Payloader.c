@@ -113,7 +113,7 @@ STATUS createH265PayloadFromNalu(UINT32 mtu, PBYTE nalu, UINT32 naluLength, PPay
      * nuh_temporal_id_plus1  u(3)
      */
     naluType = (*nalu & H265_NALU_HEADER_NAL_UNIT_TYPE_MASK) >> 1;
-
+    
     if (!sizeCalculationOnly) {
         pPayload = pPayloadArray->payloadBuffer;
     }
@@ -138,25 +138,30 @@ STATUS createH265PayloadFromNalu(UINT32 mtu, PBYTE nalu, UINT32 naluLength, PPay
         // FU: https://tools.ietf.org/html/rfc7798#section-4.4.3
         maxPayloadSize = mtu - H265_RTP_PAYLOAD_HEADER_SIZE - H265_RTP_FU_HEADER_SIZE;
         
-        /*
-         * Construct the PayloadHdr common to each packet.
-         *
-         * 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6
-         * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-         * |    PayloadHdr (Type=49)       |
-         * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-         */
-        UINT8 payloadHdr[H265_RTP_PAYLOAD_HEADER_SIZE];
-        // F, LayerId, and TID MUST be equal to the original NAL
-        memcpy(&payloadHdr, nalu, H265_NALU_HEADER_SIZE);
-        // The Type field must be 49
-        payloadHdr[0] |= ((H265_RTP_FU_PAYLOAD_HEADER_TYPE << 1) ^ H265_NALU_HEADER_NAL_UNIT_TYPE_MASK);
-
         // The FU header contains equivalent information to the NALU header. It is removed.
         remainingNaluLength -= H265_NALU_HEADER_SIZE;
         pCurPtrInNalu = nalu + H265_NALU_HEADER_SIZE;
 
+        UINT8 payloadHdr[H265_RTP_PAYLOAD_HEADER_SIZE];
+        if (!sizeCalculationOnly) {
+            /*
+             * Construct the PayloadHdr common to each packet.
+             *
+             * 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6
+             * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+             * |    PayloadHdr (Type=49)       |
+             * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+             */
+            // F, LayerId, and TID MUST be equal to the original NAL
+            memcpy(&payloadHdr, nalu, H265_NALU_HEADER_SIZE);
+            // The Type field must be 49
+            //        0 x x x   x x x 0
+            //        0 1 1 0   0 0 1 0
+            payloadHdr[0] = (H265_RTP_FU_PAYLOAD_HEADER_TYPE << 1) | (H265_NALU_HEADER_NAL_UNIT_NOT_TYPE_MASK & payloadHdr[0]);
+        }
+
         while (remainingNaluLength != 0) {
+            // TODO: Consider fragmenting into equal payload sizes.
             curPayloadSize = MIN(maxPayloadSize, remainingNaluLength);
             payloadSubLenSize++;
             payloadLength += H265_RTP_PAYLOAD_HEADER_SIZE + H265_RTP_FU_HEADER_SIZE + curPayloadSize;
@@ -164,6 +169,7 @@ STATUS createH265PayloadFromNalu(UINT32 mtu, PBYTE nalu, UINT32 naluLength, PPay
             if (!sizeCalculationOnly) {
                 CHK(payloadSubLenSize <= pPayloadArray->maxPayloadSubLenSize && payloadLength <= pPayloadArray->maxPayloadLength,
                     STATUS_BUFFER_TOO_SMALL);
+                
                 /*
                  * Write the common PayloadHdr.
                  * Note: The DONL field is skipped when sprop-max-don-diff == 0.
@@ -178,14 +184,16 @@ STATUS createH265PayloadFromNalu(UINT32 mtu, PBYTE nalu, UINT32 naluLength, PPay
                  * |S|E|  FuType   |
                  * +---------------+
                  */
-                pPayload[2] = naluType;
-                if (remainingNaluLength == naluLength - 1) {
+                pPayload[H265_RTP_PAYLOAD_HEADER_SIZE] = naluType;
+                if (remainingNaluLength == naluLength - H265_NALU_HEADER_SIZE) {
                     // Set for starting bit
                     pPayload[H265_RTP_PAYLOAD_HEADER_SIZE] |= 1 << (H265_RTP_FU_HEADER_FU_TYPE_BITS + 1);
                 } else if (remainingNaluLength == curPayloadSize) {
                     // Set for ending bit
                     pPayload[H265_RTP_PAYLOAD_HEADER_SIZE] |= 1 << H265_RTP_FU_HEADER_FU_TYPE_BITS;
                 }
+                
+                // Write the payload.
                 MEMCPY(pPayload + H265_RTP_PAYLOAD_HEADER_SIZE + H265_RTP_FU_HEADER_SIZE, pCurPtrInNalu, curPayloadSize);
 
                 pPayloadArray->payloadSubLength[payloadSubLenSize - 1] = H265_RTP_PAYLOAD_HEADER_SIZE + H265_RTP_FU_HEADER_SIZE + curPayloadSize;

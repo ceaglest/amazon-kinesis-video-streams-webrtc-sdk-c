@@ -264,7 +264,7 @@ STATUS getNextH265AccessUnitLength(PBYTE nalus, UINT32 nalusLength, PUINT32 pSta
         curPtrInNalus += startIndex + nextNaluLength;
         remainNalusLength -= startIndex + nextNaluLength;
         accessUnitLength += startIndex + nextNaluLength;
-    } while (!endOfAccessUnit);
+    } while (!endOfAccessUnit && remainNalusLength > 0);
 
     *pStart = 0;
     *pNaluLength = accessUnitLength;
@@ -324,7 +324,6 @@ PVOID sendH265VideoPackets(PVOID args)
         encoderStats.bitDepth = bitDepth;
         encoderStats.targetBitrate = targetBitrate;
 
-        // TODO: Advance h265AnnexB.frameData and .size as the bitstream is parsed.
         UINT32 pStart; UINT32 pNaluLength;
         CHK_STATUS(getNextH265AccessUnitLength(h265AnnexB.frameData, h265AnnexB.size, &pStart, &pNaluLength));
         accessUnit.size = pNaluLength;
@@ -349,12 +348,16 @@ PVOID sendH265VideoPackets(PVOID args)
         }
         MUTEX_UNLOCK(pSampleConfiguration->streamingSessionListReadLock);
 
+        // Advance the bitstream cursor by one access unit.
+        h265AnnexB.frameData += pStart + pNaluLength;
+        h265AnnexB.size -= pStart + pNaluLength;
+
         // Adjust sleep in the case the sleep itself and writeFrame take longer than expected. Since sleep makes sure that the thread
         // will be paused at least until the given amount, we can assume that there's no too early frame scenario.
         // Also, it's very unlikely to have a delay greater than SAMPLE_VIDEO_FRAME_DURATION, so the logic assumes that this is always
         // true for simplicity.
         elapsed = lastFrameTime - startTime;
-        THREAD_SLEEP(SAMPLE_VIDEO_FRAME_DURATION - elapsed % SAMPLE_VIDEO_FRAME_DURATION);
+        THREAD_SLEEP(SAMPLE_H265_VIDEO_FRAME_DURATION - elapsed % SAMPLE_H265_VIDEO_FRAME_DURATION);
         lastFrameTime = GETTIME();
     }
 
