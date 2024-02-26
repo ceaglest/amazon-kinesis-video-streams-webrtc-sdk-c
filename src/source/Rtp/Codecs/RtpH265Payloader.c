@@ -78,7 +78,12 @@ CleanUp:
     return retStatus;
 }
 
-STATUS createH265PayloadFromNalu(UINT32 mtu, PBYTE nalu, UINT32 naluLength, PPayloadArray pPayloadArray, PUINT32 filledLength, PUINT32 filledSubLenSize)
+STATUS createH265PayloadFromNalu(UINT32 mtu,
+                                 PBYTE nalu,
+                                 UINT32 naluLength,
+                                 PPayloadArray pPayloadArray,
+                                 PUINT32 filledLength,
+                                 PUINT32 filledSubLenSize)
 {
     ENTERS();
     STATUS retStatus = STATUS_SUCCESS;
@@ -99,14 +104,15 @@ STATUS createH265PayloadFromNalu(UINT32 mtu, PBYTE nalu, UINT32 naluLength, PPay
     CHK(sizeCalculationOnly || (pPayloadArray->payloadSubLength != NULL && pPayloadArray->payloadBuffer != NULL), STATUS_NULL_ARG);
     CHK(mtu > H265_RTP_PAYLOAD_HEADER_SIZE, STATUS_RTP_INPUT_MTU_TOO_SMALL);
 
-    // TODO: Parse nuh_layer_id and nuh_temporal_id_plus1.
     /*
-     nal_unit_header {
-       forbidden_zero_bit: 0
-       nal_unit_type: 32
-       nuh_layer_id: 0
-       nuh_temporal_id_plus1: 1
-     }
+     * Parse the NALU header.
+     *
+     * +---------------+---------------+
+     * |0|1|2|3|4|5|6|7|0|1|2|3|4|5|6|7|
+     * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+     * |F|   Type    |  LayerId  | TID |
+     * +-------------+-----------------+
+     *
      * forbidden_zero_bit  f(1)
      * nal_unit_type  u(6)
      * nuh_layer_id  u(6)
@@ -120,7 +126,7 @@ STATUS createH265PayloadFromNalu(UINT32 mtu, PBYTE nalu, UINT32 naluLength, PPay
 
     // TODO: Consider using Aggregation Packets for non-VCL NALUs
     if (naluLength <= mtu) {
-        // Single NALU: https://datatracker.ietf.org/doc/html/rfc7798#section-4.4.1
+        // Single NALU: https://tools.ietf.org/html/rfc7798#section-4.4.1
         payloadLength += naluLength;
         payloadSubLenSize++;
 
@@ -128,7 +134,6 @@ STATUS createH265PayloadFromNalu(UINT32 mtu, PBYTE nalu, UINT32 naluLength, PPay
             CHK(payloadSubLenSize <= pPayloadArray->maxPayloadSubLenSize && payloadLength <= pPayloadArray->maxPayloadLength,
                 STATUS_BUFFER_TOO_SMALL);
 
-            // Single NALU https://tools.ietf.org/html/rfc7798#section-4.4.1
             // The DONL field is not present because the library does not negotiate frame reordering.
             MEMCPY(pPayload, nalu, naluLength);
             pPayloadArray->payloadSubLength[payloadSubLenSize - 1] = naluLength;
