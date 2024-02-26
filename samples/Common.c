@@ -520,8 +520,14 @@ STATUS createSampleStreamingSession(PSampleConfiguration pSampleConfiguration, P
                                                pSampleConfiguration->onDataChannel));
     }
 
-    // Declare that we support H264,Profile=42E01F,level-asymmetry-allowed=1,packetization-mode=1 and Opus
-    CHK_STATUS(addSupportedCodec(pSampleStreamingSession->pPeerConnection, RTC_CODEC_H264_PROFILE_42E01F_LEVEL_ASYMMETRY_ALLOWED_PACKETIZATION_MODE));
+    // Opus is always used for audio, but the video codec selected depends on the Master and Viewer.
+    if (SAMPLE_ENABLE_H265_VIDEO) {
+        CHK_STATUS(addSupportedCodec(pSampleStreamingSession->pPeerConnection, RTC_CODEC_H265_TX_MODE_SRST));
+        // TODO: Is H.264 still used as a fallback codec for devices that do not support H.265?
+    } else {
+        // Declare that we support H264,Profile=42E01F,level-asymmetry-allowed=1,packetization-mode=1
+        CHK_STATUS(addSupportedCodec(pSampleStreamingSession->pPeerConnection, RTC_CODEC_H264_PROFILE_42E01F_LEVEL_ASYMMETRY_ALLOWED_PACKETIZATION_MODE));
+    }
     CHK_STATUS(addSupportedCodec(pSampleStreamingSession->pPeerConnection, RTC_CODEC_OPUS));
 
     // Add a SendRecv Transceiver of type video
