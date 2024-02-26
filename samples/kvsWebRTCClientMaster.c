@@ -209,6 +209,73 @@ CleanUp:
     return (PVOID) (ULONG_PTR) retStatus;
 }
 
+// TODO: Declaring a private function. Could it be made available directly to developers?
+STATUS getNextH265NaluLength(PBYTE nalus, UINT32 nalusLength, PUINT32 pStart, PUINT32 pNaluLength);
+#define H265_NALU_TYPE_AUD_NUT 35
+#define H265_NALU_TYPE_EOS_NUT 36
+#define H265_NALU_TYPE_EOB_NUT 37
+
+/*
+ * Find the end of the Access Unit (AU) and pass the entire AU as a frame.
+ *
+ * Examples
+ * --------
+ *
+ * Instantaneous Decoder Refresh (IDR) with an Access Unit Delimiter (AUD)
+ * [ 0 [VPS] [SPS] [PPS] [SEI] [IDR] [AUD] ] [ 1 ... ]
+ * Predicted (P) with a delimiter
+ * [ N [P] [AUD] ] [ N + 1 ... [ .. ] ]
+ * Predicted Slice (P) without a delimeter
+ * [ N [P0] [P1] [P2] [P3] ] [ N + 1 ... [ .. ] ]
+ */
+STATUS getNextH265AccessUnitLength(PBYTE nalus, UINT32 nalusLength, PUINT32 pStart, PUINT32 pNaluLength)
+{
+    STATUS retStatus = STATUS_SUCCESS;
+    PBYTE curPtrInNalus = nalus;
+    UINT32 remainNalusLength = nalusLength;
+    UINT32 nextNaluLength = 0;
+    UINT32 startIndex = 0;
+    bool endOfAccessUnit = false;
+
+    do {
+        CHK_STATUS(getNextH265NaluLength(curPtrInNalus, remainNalusLength, &startIndex, &nextNaluLength));
+        
+        /*
+         * Parse the type of the NALU from the header.
+         *
+         * nal_unit_header {
+         *   forbidden_zero_bit: 0
+         *   nal_unit_type: 32
+         *   nuh_layer_id: 0
+         *   nuh_temporal_id_plus1: 1
+         * }
+         * forbidden_zero_bit  f(1)
+         * nal_unit_type  u(6)
+         * nuh_layer_id  u(6)
+         * nuh_temporal_id_plus1  u(3)
+         */
+        UINT8 nalUnitTypeMask = (UINT8) 0x7E;
+        UINT8 naluType = ((*curPtrInNalus + startIndex) & nalUnitTypeMask) >> 1;
+        if (naluType == H265_NALU_TYPE_AUD_NUT || 
+            naluType == H265_NALU_TYPE_EOS_NUT ||
+            naluType == H265_NALU_TYPE_EOB_NUT) {
+            endOfAccessUnit = true;
+        }
+        curPtrInNalus += startIndex + nextNaluLength;
+        remainNalusLength -= startIndex + nextNaluLength;
+    } while (!endOfAccessUnit);
+
+    // TODO: Return the entire access unit here.
+    *pStart = startIndex;
+    *pNaluLength = nextNaluLength;
+    
+CleanUp:
+    DLOGI("[KVS Master] Failed to parse H.265 access unit.");
+    CHK_LOG_ERR(retStatus);
+
+    return (PVOID) (ULONG_PTR) retStatus;
+}
+
 PVOID sendH265VideoPackets(PVOID args)
 {
     STATUS retStatus = STATUS_SUCCESS;
@@ -253,16 +320,12 @@ PVOID sendH265VideoPackets(PVOID args)
         encoderStats.height = height;
         encoderStats.bitDepth = bitDepth;
         encoderStats.targetBitrate = targetBitrate;
-        
-        // TODO: Find the end of the Access Unit (AU) and pass the entire AU as a frame.
-        // Instantaneous Decoder Refresh (IDR) with an Access Unit Delimiter (AUD)
-        // [ 0 [VPS] [SPS] [PPS] [SEI] [IDR] [AUD] ] [ 1 ... ]
-        // Predicted (P) with a delimiter
-        // [ N [P] [AUD] ] [ N + 1 ... [ .. ] ]
-        // Predicted Slice (P) without a delimeter
-        // [ N [P0] [P1] [P2] [P3] ] [ N + 1 ... [ .. ] ]
-        accessUnit.size = bitstreamSize;
-        accessUnit.frameData = pSampleConfiguration->pVideoFrameBuffer;
+                
+        UINT32 pStart; UINT32 pNaluLength;
+        CHK_STATUS(getNextH265AccessUnitLength(h265AnnexB.frameData, h265AnnexB.size, &pStart, &pNaluLength));
+        accessUnit.size = pNaluLength;
+        accessUnit.frameData = h265AnnexB.frameData + pStart;
+        accessUnit.duration = SAMPLE_H265_VIDEO_FRAME_DURATION;
         accessUnit.presentationTs += SAMPLE_H265_VIDEO_FRAME_DURATION;
         
         MUTEX_LOCK(pSampleConfiguration->streamingSessionListReadLock);
