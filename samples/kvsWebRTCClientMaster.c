@@ -262,7 +262,7 @@ PVOID sendH265VideoPackets(PVOID args)
         // [ N [P] [AUD] ] [ N + 1 ... [ .. ] ]
         // Predicted Slice (P) without a delimeter
         // [ N [P0] [P1] [P2] [P3] ] [ N + 1 ... [ .. ] ]
-        accessUnit.size = pSampleConfiguration->pVideoFrameBuffer;
+        accessUnit.size = bitstreamSize;
         accessUnit.frameData = pSampleConfiguration->pVideoFrameBuffer;
         accessUnit.presentationTs += SAMPLE_H265_VIDEO_FRAME_DURATION;
         
