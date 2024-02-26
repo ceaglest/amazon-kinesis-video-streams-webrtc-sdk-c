@@ -2,63 +2,6 @@
 
 #include "../../Include_i.h"
 
-STATUS getNextH265NaluLength(PBYTE nalus, UINT32 nalusLength, PUINT32 pStart, PUINT32 pNaluLength)
-{
-    ENTERS();
-
-    STATUS retStatus = STATUS_SUCCESS;
-    UINT32 zeroCount = 0, offset;
-    BOOL naluFound = FALSE;
-    PBYTE pCurrent = NULL;
-
-    CHK(nalus != NULL && pStart != NULL && pNaluLength != NULL, STATUS_NULL_ARG);
-
-    // Annex-B Nalu will have 0x000000001 or 0x000001 start code, at most 4 bytes
-    for (offset = 0; offset < 4 && offset < nalusLength && nalus[offset] == 0; offset++)
-        ;
-
-    CHK(offset < nalusLength && offset < 4 && offset >= 2 && nalus[offset] == 1, STATUS_RTP_INVALID_NALU);
-    *pStart = ++offset;
-    pCurrent = nalus + offset;
-
-    /* Not doing validation on number of consecutive zeros being less than 4 because some device can produce
-     * data with trailing zeros. */
-    while (offset < nalusLength) {
-        if (*pCurrent == 0) {
-            /* Maybe next byte is 1 */
-            offset++;
-            pCurrent++;
-
-        } else if (*pCurrent == 1) {
-            if (*(pCurrent - 1) == 0 && *(pCurrent - 2) == 0) {
-                zeroCount = *(pCurrent - 3) == 0 ? 3 : 2;
-                naluFound = TRUE;
-                break;
-            }
-
-            /* The jump is always 3 because of the 1 previously matched.
-             * All the 0's must be after this '1' matched at offset */
-            offset += 3;
-            pCurrent += 3;
-        } else {
-            /* Can jump 3 bytes forward */
-            offset += 3;
-            pCurrent += 3;
-        }
-    }
-    *pNaluLength = MIN(offset, nalusLength) - *pStart - (naluFound ? zeroCount : 0);
-
-CleanUp:
-
-    // As we might hit error often in a "bad" frame scenario, we can't use CHK_LOG_ERR as it will be too frequent
-    if (STATUS_FAILED(retStatus)) {
-        DLOGD("Warning: Failed to get the next NALu in H265 payload with 0x%08x", retStatus);
-    }
-
-    LEAVES();
-    return retStatus;
-}
-
 STATUS createPayloadForH265(UINT32 mtu,
                             PBYTE nalus,
                             UINT32 nalusLength,
@@ -96,7 +39,7 @@ STATUS createPayloadForH265(UINT32 mtu,
     payloadArray.payloadSubLength = pPayloadSubLength;
 
     do {
-        CHK_STATUS(getNextH265NaluLength(curPtrInNalus, remainNalusLength, &startIndex, &nextNaluLength));
+        CHK_STATUS(getNextNaluLength(curPtrInNalus, remainNalusLength, &startIndex, &nextNaluLength));
 
         curPtrInNalus += startIndex;
 

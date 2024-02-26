@@ -210,7 +210,7 @@ CleanUp:
 }
 
 // TODO: Declaring a private function. Could it be made available directly to developers?
-STATUS getNextH265NaluLength(PBYTE nalus, UINT32 nalusLength, PUINT32 pStart, PUINT32 pNaluLength);
+STATUS getNextNaluLength(PBYTE nalus, UINT32 nalusLength, PUINT32 pStart, PUINT32 pNaluLength);
 #define H265_NALU_TYPE_AUD_NUT (UINT8)35
 #define H265_NALU_TYPE_EOS_NUT (UINT8)36
 #define H265_NALU_TYPE_EOB_NUT (UINT8)37
@@ -238,7 +238,7 @@ STATUS getNextH265AccessUnitLength(PBYTE nalus, UINT32 nalusLength, PUINT32 pSta
     bool endOfAccessUnit = false;
 
     do {
-        CHK_STATUS(getNextH265NaluLength(curPtrInNalus, remainNalusLength, &startIndex, &nextNaluLength));
+        CHK_STATUS(getNextNaluLength(curPtrInNalus, remainNalusLength, &startIndex, &nextNaluLength));
         
         /*
          * Parse the type of the NALU from the header.
@@ -323,7 +323,8 @@ PVOID sendH265VideoPackets(PVOID args)
         encoderStats.height = height;
         encoderStats.bitDepth = bitDepth;
         encoderStats.targetBitrate = targetBitrate;
-                
+
+        // TODO: Advance h265AnnexB.frameData and .size as the bitstream is parsed.
         UINT32 pStart; UINT32 pNaluLength;
         CHK_STATUS(getNextH265AccessUnitLength(h265AnnexB.frameData, h265AnnexB.size, &pStart, &pNaluLength));
         accessUnit.size = pNaluLength;

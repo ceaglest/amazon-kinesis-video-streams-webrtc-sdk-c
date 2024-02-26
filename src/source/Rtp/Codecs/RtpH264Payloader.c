@@ -123,7 +123,7 @@ CleanUp:
 
     // As we might hit error often in a "bad" frame scenario, we can't use CHK_LOG_ERR as it will be too frequent
     if (STATUS_FAILED(retStatus)) {
-        DLOGD("Warning: Failed to get the next NALu in H264 payload with 0x%08x", retStatus);
+        DLOGD("Warning: Failed to get the next NALu in H264 / H265 payload with 0x%08x", retStatus);
     }
 
     LEAVES();
