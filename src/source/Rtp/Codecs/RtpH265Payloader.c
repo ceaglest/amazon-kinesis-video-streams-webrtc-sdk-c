@@ -124,7 +124,11 @@ STATUS createH265PayloadFromNalu(UINT32 mtu,
         pPayload = pPayloadArray->payloadBuffer;
     }
 
-    // TODO: Consider using Aggregation Packets for non-VCL NALUs
+    // TODO: Consider using Aggregation Packets for non-VCL NALUs. From 4.6:
+    // For example, non-VCL NAL units such as access unit
+    // delimiters, parameter sets, or SEI NAL units are typically small
+    // and can often be aggregated with VCL NAL units without violating
+    // MTU size constraints.
     if (naluLength <= mtu) {
         // Single NALU: https://tools.ietf.org/html/rfc7798#section-4.4.1
         payloadLength += naluLength;

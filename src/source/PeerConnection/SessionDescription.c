@@ -434,14 +434,14 @@ UINT64 getH265FmtpScore(PCHAR fmtp)
     // If no tier-flag is present, a value of 0 MUST be inferred;
     UINT32 tierFlag = 0;
     // if no level-id is present, a value of 93 (i.e., level 3.1) MUST be inferred.
-    UINT32 levelId = H265_LEVEL_31;
+    H265_LEVEL levelId = H265_LEVEL_3_1;
     // When not present, the value of sprop-max-don-diff is inferred to be equal to 0.
     UINT32 spropMaxDonDiff = 0;
     // When not present, the value of tx-mode is inferred to be equal to "SRST".
     PCHAR txMode = "SRST";
-    UINT32 maxRecvLevelId = 0;
+    H265_LEVEL maxRecvLevelId = levelId;
     // When profile-id is not present, a value of 1 (i.e., the Main profile) MUST be inferred.
-    UINT32 profileId = 1;
+    H265_PROFILE profileId = H265_PROFILE_MAIN;
     UINT64 score = 0;
 
     // No ftmp line match found after H.265 PT. Assume the default valus.
@@ -479,27 +479,27 @@ UINT64 getH265FmtpScore(PCHAR fmtp)
     readHexValue(fmtp, "tier-flag=", &tierFlag);
     bool hasLevelId = readHexValue(fmtp, "level-id=", &levelId);
     bool hasMaxRecvLevelId = readHexValue(fmtp, "max-recv-level-id=", &maxRecvLevelId);
-    UINT32 maxSupportedLevel = levelId;
+    H265_LEVEL maxSupportedLevel = levelId;
     if (hasMaxRecvLevelId) {
         maxSupportedLevel = maxRecvLevelId;
     }
 
     // The library prefers at least level 3.1 which enables decoding of 1280x720 @ 30 frames / second.
-    if (maxSupportedLevel >= H265_LEVEL_31) {
+    if (maxSupportedLevel >= H265_LEVEL_3_1) {
         score += 1;
     }
     
     // The library prefers main tier to high tier for RTC use cases.
-    if (tierFlag == H265_MAIN_TIER_FLAG) {
+    if (tierFlag == H265_TIER_MAIN) {
         score += 1;
     }
     
     // The library prefers Main profile (8 bits per channel, 4:2:0 chroma subsampling).
     // Note: The Main10 profile is more efficient for native 10-bit 4:2:0 sources since dithering is skipped.
-    // However, the memory requirements for decoding 10-bit video are increased compared to 8-bit.
+    // However, the memory requirements for encoding and decoding 10-bit video are increased compared to 8-bit.
     // TODO: How can this preference for profile-id be communicated to the encoder?
     readHexValue(fmtp, "profile-id=", &profileId);
-    if (profileId == H265_MAIN_PROFILE_ID) {
+    if (profileId == H265_PROFILE_MAIN || profileId == H265_PROFILE_MAIN10) {
         score += 1;
     }
 

@@ -69,9 +69,45 @@ extern "C" {
 // Reference: https://tools.ietf.org/html/rfc6184#section-8.1
 #define H264_FMTP_SUBPROFILE_MASK    0xFFFF00
 #define H264_FMTP_PROFILE_LEVEL_MASK 0x0000FF
-#define H265_LEVEL_31 (UINT64) 93
-#define H265_MAIN_PROFILE_ID (UINT64) 1
-#define H265_MAIN_TIER_FLAG (UINT64) 0
+
+// H.265 tiers signaled by "tier-flag" in the fmtp line.
+typedef enum {
+    H265_TIER_MAIN = 0,
+    H265_TIER_HIGH = 1,
+} H265_TIER;
+
+// H.265 profiles signaled by "profile-id" in the fmtp line.
+typedef enum {
+    H265_PROFILE_MAIN = 1,
+    H265_PROFILE_MAIN10 = 2,
+    H265_PROFILE_MAIN_STILL = 3,
+    H265_PROFILE_RANGE_EXTENSIONS = 4,
+    H265_PROFILE_HIGH_THROUGHPUT = 5,
+    H265_PROFILE_MULTIVIEW_MAIN = 6,
+    H265_PROFILE_SCALABLE_MAIN = 7,
+    H265_PROFILE_3D_MAIN = 8,
+    H265_PROFILE_SCREEN_CONTENT_CODING = 9,
+    H265_PROFILE_SCALABLE_RANGE_EXTENSIONS = 10,
+    H265_PROFILE_HIGH_THROUGHPUT_SCREEN_CONTENT_CODING = 11
+} H265_PROFILE;
+
+// H.265 levels signaled by "level-id" and "max-recv-level-id" in the fmtp line.
+// Note: All values are equal to 30 times the level number.
+typedef enum {
+    H265_LEVEL_1 = 30,
+    H265_LEVEL_2 = 60,
+    H265_LEVEL_2_1 = 63,
+    H265_LEVEL_3 = 90,
+    H265_LEVEL_3_1 = 93,
+    H265_LEVEL_4 = 120,
+    H265_LEVEL_4_1 = 123,
+    H265_LEVEL_5 = 150,
+    H265_LEVEL_5_1 = 153,
+    H265_LEVEL_5_2 = 156,
+    H265_LEVEL_6 = 180,
+    H265_LEVEL_6_1 = 183,
+    H265_LEVEL_6_2 = 186,
+} H265_LEVEL;
 
 #define DTLS_ROLE_ACTPASS (PCHAR) "actpass"
 #define DTLS_ROLE_ACTIVE  (PCHAR) "active"
