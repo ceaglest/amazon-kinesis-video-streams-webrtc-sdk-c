@@ -2,6 +2,10 @@
 
 #include "../../Include_i.h"
 
+const UINT8 H265_NALU_HEADER_SIZE_BYTES = 2;
+const UINT8 H265_RTP_PAYLOAD_HEADER_SIZE_BYTES = 2;
+const UINT8 H265_RTP_FU_HEADER_SIZE_BYTES = 1;
+
 STATUS createPayloadForH265(UINT32 mtu,
                             PBYTE nalus,
                             UINT32 nalusLength,
@@ -88,6 +92,7 @@ STATUS createH265PayloadFromNalu(UINT32 mtu,
     ENTERS();
     STATUS retStatus = STATUS_SUCCESS;
     PBYTE pPayload = NULL;
+    UINT8 fBit = 0;
     UINT8 naluType = 0;
     UINT8 nuhLayerId = 0;
     BYTE nuhTemporalIdPlusOne = 0;
@@ -103,7 +108,7 @@ STATUS createH265PayloadFromNalu(UINT32 mtu,
     CHK(nalu != NULL && filledLength != NULL && filledSubLenSize != NULL, STATUS_NULL_ARG);
     sizeCalculationOnly = (pPayloadArray == NULL);
     CHK(sizeCalculationOnly || (pPayloadArray->payloadSubLength != NULL && pPayloadArray->payloadBuffer != NULL), STATUS_NULL_ARG);
-    CHK(mtu > H265_RTP_PAYLOAD_HEADER_SIZE, STATUS_RTP_INPUT_MTU_TOO_SMALL);
+    CHK(mtu > H265_RTP_PAYLOAD_HEADER_SIZE_BYTES, STATUS_RTP_INPUT_MTU_TOO_SMALL);
 
     /*
      * Parse the NALU header.
@@ -114,9 +119,11 @@ STATUS createH265PayloadFromNalu(UINT32 mtu,
      * |F|   Type    |  LayerId  | TID |
      * +-------------+-----------------+
      */
-    naluType = (nalu[0] & H265_NALU_HEADER_NAL_UNIT_TYPE_MASK) >> 1;
-    nuhTemporalIdPlusOne = (nalu[1] & H265_NALU_HEADER_NAL_UNIT_TID_MASK);
+    naluType = (nalu[0] & H265_NALU_HEADER_MASK_TYPE) >> 1;
+    fBit = (nalu[0] & H265_NALU_HEADER_MASK_FBIT) >> 7;
+    nuhTemporalIdPlusOne = (nalu[1] & H265_NALU_HEADER_MASK_TID);
     CHK_ERR(nuhTemporalIdPlusOne > 0, STATUS_RTP_INVALID_NALU, "The nuh_temporal_id_plus1 must be greater than zero.");
+    CHK_ERR(fBit == 0, STATUS_RTP_INVALID_NALU, "The forbidden bit must be set to zero.");
     nuhTemporalId = nuhTemporalIdPlusOne - 1;
     
     if (!sizeCalculationOnly) {
@@ -128,7 +135,11 @@ STATUS createH265PayloadFromNalu(UINT32 mtu,
     // delimiters, parameter sets, or SEI NAL units are typically small
     // and can often be aggregated with VCL NAL units without violating
     // MTU size constraints.
-    if (naluLength <= mtu) {
+    if (naluType == 35) {
+        // With SRST there is no need to send an Access Unit Delimiter as the RTP marker bit is equivalent.
+        payloadLength += 0;
+        payloadSubLenSize += 0;
+    } else if (naluLength <= mtu) {
         // Single NALU: https://tools.ietf.org/html/rfc7798#section-4.4.1
         payloadLength += naluLength;
         payloadSubLenSize++;
@@ -144,35 +155,37 @@ STATUS createH265PayloadFromNalu(UINT32 mtu,
         }
     } else {
         // FU: https://tools.ietf.org/html/rfc7798#section-4.4.3
-        maxPayloadSize = mtu - H265_RTP_PAYLOAD_HEADER_SIZE - H265_RTP_FU_HEADER_SIZE;
+        maxPayloadSize = mtu - H265_RTP_PAYLOAD_HEADER_SIZE_BYTES - H265_RTP_FU_HEADER_SIZE_BYTES;
         
-        // The FU header contains equivalent information to the NALU header. It is removed.
-        remainingNaluLength -= H265_NALU_HEADER_SIZE;
-        pCurPtrInNalu = nalu + H265_NALU_HEADER_SIZE;
-
-        UINT8 payloadHdr[H265_RTP_PAYLOAD_HEADER_SIZE];
+        UINT8 payloadHdr[H265_RTP_PAYLOAD_HEADER_SIZE_BYTES];
         if (!sizeCalculationOnly) {
             /*
              * Construct the PayloadHdr common to each packet.
              *
-             * 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6
+             * F, LayerId, and TID MUST be equal to the original NAL.
+             *
+             * +---------------+---------------+
+             * |0|1|2|3|4|5|6|7|0|1|2|3|4|5|6|7|
              * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
-             * |    PayloadHdr (Type=49)       |
-             * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+             * |F| Type (49) |  LayerId  | TID |
+             * +-------------+-----------------+
              */
-            // F, LayerId, and TID MUST be equal to the original NAL
-            memcpy(&payloadHdr, nalu, H265_NALU_HEADER_SIZE);
-            // The Type field must be 49
-            //        0 x x x   x x x 0
-            //        0 1 1 0   0 0 1 0
-            payloadHdr[0] = (H265_RTP_FU_PAYLOAD_HEADER_TYPE << 1) | (H265_NALU_HEADER_NAL_UNIT_NOT_TYPE_MASK & payloadHdr[0]);
+            memcpy(&payloadHdr, nalu, H265_NALU_HEADER_SIZE_BYTES);
+            UINT8 fuTypeShifted = (H265_RTP_FU_PAYLOAD_HEADER_TYPE << 1);
+            UINT8 layerIdHigh = (payloadHdr[0] * H265_NALU_HEADER_MASK_LAYER_ID_HIGH);
+            UINT8 fBitShifted = (payloadHdr[0] & H265_NALU_HEADER_MASK_FBIT);
+            payloadHdr[0] = fBitShifted | fuTypeShifted | layerIdHigh;
         }
+        
+        // The PayloadHdr + FU header contain equivalent information to the NALU header. It is removed.
+        remainingNaluLength -= H265_NALU_HEADER_SIZE_BYTES;
+        pCurPtrInNalu = nalu + H265_NALU_HEADER_SIZE_BYTES;
 
         while (remainingNaluLength != 0) {
             // TODO: Consider fragmenting into equal payload sizes.
             curPayloadSize = MIN(maxPayloadSize, remainingNaluLength);
             payloadSubLenSize++;
-            payloadLength += H265_RTP_PAYLOAD_HEADER_SIZE + H265_RTP_FU_HEADER_SIZE + curPayloadSize;
+            payloadLength += H265_RTP_PAYLOAD_HEADER_SIZE_BYTES + H265_RTP_FU_HEADER_SIZE_BYTES + curPayloadSize;
 
             if (!sizeCalculationOnly) {
                 CHK(payloadSubLenSize <= pPayloadArray->maxPayloadSubLenSize && payloadLength <= pPayloadArray->maxPayloadLength,
@@ -182,7 +195,7 @@ STATUS createH265PayloadFromNalu(UINT32 mtu,
                  * Write the common PayloadHdr.
                  * Note: The DONL field is skipped when sprop-max-don-diff == 0.
                  */
-                MEMCPY(pPayload, payloadHdr, H265_RTP_PAYLOAD_HEADER_SIZE);
+                MEMCPY(pPayload, payloadHdr, H265_RTP_PAYLOAD_HEADER_SIZE_BYTES);
 
                 /*
                  * Write the FU header.
@@ -192,19 +205,19 @@ STATUS createH265PayloadFromNalu(UINT32 mtu,
                  * |S|E|  FuType   |
                  * +---------------+
                  */
-                pPayload[H265_RTP_PAYLOAD_HEADER_SIZE] = naluType;
-                if (remainingNaluLength == naluLength - H265_NALU_HEADER_SIZE) {
+                pPayload[H265_RTP_PAYLOAD_HEADER_SIZE_BYTES] = naluType;
+                if (remainingNaluLength == naluLength - H265_NALU_HEADER_SIZE_BYTES) {
                     // Set for starting bit
-                    pPayload[H265_RTP_PAYLOAD_HEADER_SIZE] |= 1 << (H265_RTP_FU_HEADER_FU_TYPE_BITS + 1);
+                    pPayload[H265_RTP_PAYLOAD_HEADER_SIZE_BYTES] |= 0x1 << (H265_RTP_FU_HEADER_FU_TYPE_BITS + 1);
                 } else if (remainingNaluLength == curPayloadSize) {
                     // Set for ending bit
-                    pPayload[H265_RTP_PAYLOAD_HEADER_SIZE] |= 1 << H265_RTP_FU_HEADER_FU_TYPE_BITS;
+                    pPayload[H265_RTP_PAYLOAD_HEADER_SIZE_BYTES] |= 0x1 << H265_RTP_FU_HEADER_FU_TYPE_BITS;
                 }
                 
                 // Write the payload.
-                MEMCPY(pPayload + H265_RTP_PAYLOAD_HEADER_SIZE + H265_RTP_FU_HEADER_SIZE, pCurPtrInNalu, curPayloadSize);
+                MEMCPY(pPayload + H265_RTP_PAYLOAD_HEADER_SIZE_BYTES + H265_RTP_FU_HEADER_SIZE_BYTES, pCurPtrInNalu, curPayloadSize);
 
-                pPayloadArray->payloadSubLength[payloadSubLenSize - 1] = H265_RTP_PAYLOAD_HEADER_SIZE + H265_RTP_FU_HEADER_SIZE + curPayloadSize;
+                pPayloadArray->payloadSubLength[payloadSubLenSize - 1] = H265_RTP_PAYLOAD_HEADER_SIZE_BYTES + H265_RTP_FU_HEADER_SIZE_BYTES + curPayloadSize;
                 pPayload += pPayloadArray->payloadSubLength[payloadSubLenSize - 1];
             }
 

@@ -10,17 +10,27 @@ H265 RTP Payloader include file
 extern "C" {
 #endif
 
-#define H265_NALU_HEADER_SIZE                           (UINT8) 2
-#define H265_NALU_HEADER_NAL_UNIT_TYPE_MASK             (UINT8) 0x7E
-#define H265_NALU_HEADER_NAL_UNIT_TID_MASK              (UINT8) 0x07
-#define H265_NALU_HEADER_NAL_UNIT_NOT_TYPE_MASK         (UINT8) 0x81
 #define H265_NALU_HEADER_NUH_LAYER_ID_MASK              (UINT16) 0x01F8
-#define H265_NALU_HEADER_NUH_TEMPORAL_ID_PLUS1_MASK     (UINT16) 0x0007
-
-#define H265_RTP_PAYLOAD_HEADER_SIZE        2
-#define H265_RTP_FU_HEADER_SIZE             1
 #define H265_RTP_FU_HEADER_FU_TYPE_BITS     6
+
+// TODO: Define the NALU Payload types
 #define H265_RTP_FU_PAYLOAD_HEADER_TYPE     (UINT8) 49
+
+/**
+ * @brief The masks used to parse H.265 NALU headers.
+ * The header structure is different than H.264 NALUs.
+ */
+typedef enum {
+    H265_NALU_HEADER_MASK_FBIT = 0x80,
+    H265_NALU_HEADER_MASK_TYPE = 0x7E,
+    H265_NALU_HEADER_MASK_LAYER_ID_HIGH = 0x1,
+    H265_NALU_HEADER_MASK_LAYER_ID_LOW = 0xF8,
+    H265_NALU_HEADER_MASK_TID = 0x07,
+} H265_NALU_HEADER_MASK;
+
+const UINT8 H265_NALU_HEADER_SIZE_BYTES;
+const UINT8 H265_RTP_PAYLOAD_HEADER_SIZE_BYTES;
+const UINT8 H265_RTP_FU_HEADER_SIZE_BYTES;
 
 /*
  * Payload Structures
