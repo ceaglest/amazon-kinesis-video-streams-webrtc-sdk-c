@@ -90,6 +90,7 @@ STATUS createH265PayloadFromNalu(UINT32 mtu,
     PBYTE pPayload = NULL;
     UINT8 naluType = 0;
     UINT8 nuhLayerId = 0;
+    BYTE nuhTemporalIdPlusOne = 0;
     UINT8 nuhTemporalId = 0;
     UINT32 maxPayloadSize = 0;
     UINT32 curPayloadSize = 0;
@@ -112,13 +113,11 @@ STATUS createH265PayloadFromNalu(UINT32 mtu,
      * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
      * |F|   Type    |  LayerId  | TID |
      * +-------------+-----------------+
-     *
-     * forbidden_zero_bit  f(1)
-     * nal_unit_type  u(6)
-     * nuh_layer_id  u(6)
-     * nuh_temporal_id_plus1  u(3)
      */
-    naluType = (*nalu & H265_NALU_HEADER_NAL_UNIT_TYPE_MASK) >> 1;
+    naluType = (nalu[0] & H265_NALU_HEADER_NAL_UNIT_TYPE_MASK) >> 1;
+    nuhTemporalIdPlusOne = (nalu[1] & H265_NALU_HEADER_NAL_UNIT_TID_MASK);
+    CHK_ERR(nuhTemporalIdPlusOne > 0, STATUS_RTP_INVALID_NALU, "The nuh_temporal_id_plus1 must be greater than zero.");
+    nuhTemporalId = nuhTemporalIdPlusOne - 1;
     
     if (!sizeCalculationOnly) {
         pPayload = pPayloadArray->payloadBuffer;
@@ -141,7 +140,7 @@ STATUS createH265PayloadFromNalu(UINT32 mtu,
             // The DONL field is not present because the library does not negotiate frame reordering.
             MEMCPY(pPayload, nalu, naluLength);
             pPayloadArray->payloadSubLength[payloadSubLenSize - 1] = naluLength;
-            pPayload += pPayloadArray->payloadSubLength[payloadSubLenSize - 1];
+            pPayload += naluLength;
         }
     } else {
         // FU: https://tools.ietf.org/html/rfc7798#section-4.4.3
