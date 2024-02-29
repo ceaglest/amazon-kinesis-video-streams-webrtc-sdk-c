@@ -5,6 +5,7 @@
 const UINT8 H265_NALU_HEADER_SIZE_BYTES = 2;
 const UINT8 H265_RTP_PAYLOAD_HEADER_SIZE_BYTES = 2;
 const UINT8 H265_RTP_FU_HEADER_SIZE_BYTES = 1;
+const UINT8 H265_RTP_FU_HEADER_FU_TYPE_SIZE_BITS = 6;
 
 STATUS createPayloadForH265(UINT32 mtu,
                             PBYTE nalus,
@@ -82,6 +83,140 @@ CleanUp:
     return retStatus;
 }
 
+// TODO: Conditionally compile this function when streaming logs are enabled due to binary size.
+PCHAR getH265NaluTypeString(H265_NALU_TYPE type) {
+    switch (type) {
+        case H265_NALU_TYPE_TRAIL_N:
+            return "TRAIL_N";
+        case H265_NALU_TYPE_TRAIL_R:
+            return "TRAIL_R";
+        case H265_NALU_TYPE_TSA_N:
+            return "TSA_N";
+        case H265_NALU_TYPE_TSA_R:
+            return "TSA_R";
+        case H265_NALU_TYPE_STSA_N:
+            return "STSA_N";
+        case H265_NALU_TYPE_STSA_R:
+            return "STSA_R";
+        case H265_NALU_TYPE_RADL_N:
+            return "RADL_N";
+        case H265_NALU_TYPE_RADL_R:
+            return "RADL_R";
+        case H265_NALU_TYPE_RASL_N:
+            return "RASL_N";
+        case H265_NALU_TYPE_RASL_R:
+            return "RASL_R";
+        case H265_NALU_TYPE_RSV_VCL_N10:
+            return "VCL_N10";
+        case H265_NALU_TYPE_RSV_VCL_R11:
+            return "VCL_R11";
+        case H265_NALU_TYPE_RSV_VCL_N12:
+            return "VCL_N12";
+        case H265_NALU_TYPE_RSV_VCL_R13:
+            return "VCL_R13";
+        case H265_NALU_TYPE_RSV_VCL_N14:
+            return "VCL_N14";
+        case H265_NALU_TYPE_RSV_VCL_R15:
+            return "VCL_R15";
+        case H265_NALU_TYPE_BLA_W_LP:
+            return "BLA_W_LP";
+        case H265_NALU_TYPE_BLA_W_RADL:
+            return "BLA_W_RADL";
+        case H265_NALU_TYPE_BLA_N_LP:
+            return "BLA_N_LP";
+        case H265_NALU_TYPE_IDR_W_RADL:
+            return "IDR_W_RADL";
+        case H265_NALU_TYPE_IDR_N_LP:
+            return "IDR_N_LP";
+        case H265_NALU_TYPE_CRA_NUT:
+            return "CRA_NUT";
+        case H265_NALU_TYPE_RSV_IRAP_VCL22:
+            return "RSV_IRAP_VCL22";
+        case H265_NALU_TYPE_RSV_IRAP_VCL23:
+            return "RSV_IRAP_VCL23";
+        case H265_NALU_TYPE_RSV_VCL24:
+            return "RSV_VCL24";
+        case H265_NALU_TYPE_RSV_VCL25:
+            return "RSV_VCL25";
+        case H265_NALU_TYPE_RSV_VCL26:
+            return "RSV_VCL26";
+        case H265_NALU_TYPE_RSV_VCL27:
+            return "RSV_VCL27";
+        case H265_NALU_TYPE_RSV_VCL28:
+            return "RSV_VCL28";
+        case H265_NALU_TYPE_RSV_VCL29:
+            return "RSV_VCL29";
+        case H265_NALU_TYPE_RSV_VCL30:
+            return "RSV_VCL30";
+        case H265_NALU_TYPE_RSV_VCL31:
+            return "VCL31";
+        case H265_NALU_TYPE_VPS_NUT:
+            return "VPS_NUT";
+        case H265_NALU_TYPE_SPS_NUT:
+            return "SPS_NUT";
+        case H265_NALU_TYPE_PPS_NUT:
+            return "PPS_NUT";
+        case H265_NALU_TYPE_AUD_NUT:
+            return "AUD_NUT";
+        case H265_NALU_TYPE_EOS_NUT:
+            return "EOS_NUT";
+        case H265_NALU_TYPE_EOB_NUT:
+            return "EOB_NUT";
+        case H265_NALU_TYPE_FD_NUT:
+            return "FD_NUT";
+        case H265_NALU_TYPE_PREFIX_SEI_NUT:
+            return "PREFIX_SEI_NUT";
+        case H265_NALU_TYPE_SUFFIX_SEI_NUT:
+            return "SUFFIX_SEI_NUT";
+        case H265_NALU_TYPE_RSV_NVCL41:
+            return "RSV_NVCL41";
+        case H265_NALU_TYPE_RSV_NVCL42:
+            return "RSV_NVCL42";
+        case H265_NALU_TYPE_RSV_NVCL43:
+            return "RSV_NVCL43";
+        case H265_NALU_TYPE_RSV_NVCL44:
+            return "RSV_NVCL44";
+        case H265_NALU_TYPE_RSV_NVCL45:
+            return "RSV_NVCL45";
+        case H265_NALU_TYPE_RSV_NVCL46:
+            return "RSV_NVCL46";
+        case H265_NALU_TYPE_RSV_NVCL47:
+            return "RSV_NVCL47";
+        case H265_NALU_TYPE_AP:
+            return "AP";
+        case H265_NALU_TYPE_FU:
+            return "FU";
+        case H265_NALU_TYPE_UNSPEC50:
+            return "UNSPEC50";
+        case H265_NALU_TYPE_UNSPEC51:
+            return "UNSPEC51";
+        case H265_NALU_TYPE_UNSPEC52:
+            return "UNSPEC52";
+        case H265_NALU_TYPE_UNSPEC53:
+            return "UNSPEC53";
+        case H265_NALU_TYPE_UNSPEC54:
+            return "UNSPEC54";
+        case H265_NALU_TYPE_UNSPEC55:
+            return "UNSPEC55";
+        case H265_NALU_TYPE_UNSPEC56:
+            return "UNSPEC56";
+        case H265_NALU_TYPE_UNSPEC57:
+            return "UNSPEC57";
+        case H265_NALU_TYPE_UNSPEC58:
+            return "UNSPEC58";
+        case H265_NALU_TYPE_UNSPEC59:
+            return "UNSPEC59";
+        case H265_NALU_TYPE_UNSPEC60:
+            return "UNSPEC60";
+        case H265_NALU_TYPE_UNSPEC61:
+            return "UNSPEC61";
+        case H265_NALU_TYPE_UNSPEC62:
+            return "UNSPEC62";
+        case H265_NALU_TYPE_UNSPEC63:
+            return "UNSPEC63";
+    }
+}
+
 STATUS createH265PayloadFromNalu(UINT32 mtu,
                                  PBYTE nalu,
                                  UINT32 naluLength,
@@ -127,6 +262,11 @@ STATUS createH265PayloadFromNalu(UINT32 mtu,
     nuhTemporalId = nuhTemporalIdPlusOne - 1;
     
     if (!sizeCalculationOnly) {
+        // TODO: Migrate to DLOGS, this is very noisy.
+        DLOGI("[RtpH265Payloader] Create payload for NALU. Type: %s, TID: %" PRIu8 ", length: %d",
+              getH265NaluTypeString(naluType),
+              nuhTemporalId,
+              naluLength);
         pPayload = pPayloadArray->payloadBuffer;
     }
 
@@ -135,7 +275,7 @@ STATUS createH265PayloadFromNalu(UINT32 mtu,
     // delimiters, parameter sets, or SEI NAL units are typically small
     // and can often be aggregated with VCL NAL units without violating
     // MTU size constraints.
-    if (naluType == 35) {
+    if (naluType == H265_NALU_TYPE_AUD_NUT || naluType == H265_NALU_TYPE_EOS_NUT) {
         // With SRST there is no need to send an Access Unit Delimiter as the RTP marker bit is equivalent.
         payloadLength += 0;
         payloadSubLenSize += 0;
@@ -171,7 +311,7 @@ STATUS createH265PayloadFromNalu(UINT32 mtu,
              * +-------------+-----------------+
              */
             memcpy(&payloadHdr, nalu, H265_NALU_HEADER_SIZE_BYTES);
-            UINT8 fuTypeShifted = (H265_RTP_FU_PAYLOAD_HEADER_TYPE << 1);
+            UINT8 fuTypeShifted = (H265_NALU_TYPE_FU << 1);
             UINT8 layerIdHigh = (payloadHdr[0] * H265_NALU_HEADER_MASK_LAYER_ID_HIGH);
             UINT8 fBitShifted = (payloadHdr[0] & H265_NALU_HEADER_MASK_FBIT);
             payloadHdr[0] = fBitShifted | fuTypeShifted | layerIdHigh;
@@ -208,10 +348,10 @@ STATUS createH265PayloadFromNalu(UINT32 mtu,
                 pPayload[H265_RTP_PAYLOAD_HEADER_SIZE_BYTES] = naluType;
                 if (remainingNaluLength == naluLength - H265_NALU_HEADER_SIZE_BYTES) {
                     // Set for starting bit
-                    pPayload[H265_RTP_PAYLOAD_HEADER_SIZE_BYTES] |= 0x1 << (H265_RTP_FU_HEADER_FU_TYPE_BITS + 1);
+                    pPayload[H265_RTP_PAYLOAD_HEADER_SIZE_BYTES] |= 0x1 << (H265_RTP_FU_HEADER_FU_TYPE_SIZE_BITS + 1);
                 } else if (remainingNaluLength == curPayloadSize) {
                     // Set for ending bit
-                    pPayload[H265_RTP_PAYLOAD_HEADER_SIZE_BYTES] |= 0x1 << H265_RTP_FU_HEADER_FU_TYPE_BITS;
+                    pPayload[H265_RTP_PAYLOAD_HEADER_SIZE_BYTES] |= 0x1 << H265_RTP_FU_HEADER_FU_TYPE_SIZE_BITS;
                 }
                 
                 // Write the payload.
