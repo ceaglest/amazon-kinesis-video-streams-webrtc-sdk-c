@@ -51,7 +51,7 @@ typedef enum : UINT8 {
     H265_NALU_TYPE_SPS_NUT = 33,
     /** The Picture Parameter Set. **/
     H265_NALU_TYPE_PPS_NUT = 34,
-    /** The Access Unit Delimiter. If present, this is the last NALU in the Access Unit. **/
+    /** The Access Unit Delimiter. If present, this is the first NALU in the Access Unit. **/
     H265_NALU_TYPE_AUD_NUT = 35,
     /** The end of Sequence indicator. If present, this is the last access unit in the Sequence. **/
     H265_NALU_TYPE_EOS_NUT = 36,
@@ -107,12 +107,14 @@ const UINT8 H265_NALU_HEADER_SIZE_BYTES;
 const UINT8 H265_RTP_PAYLOAD_HEADER_SIZE_BYTES;
 const UINT8 H265_RTP_FU_HEADER_SIZE_BYTES;
 const UINT8 H265_RTP_FU_HEADER_FU_TYPE_SIZE_BITS;
+/** The maximum number of NALUs that can be contained in a single Access Unit. The library can't send AUs larger than this. */
+const UINT8 H265_ACCESS_UNIT_MAX_SIZE;
 
 /*
  * Payload Structures
  * ------------------
  *
- * Four different payload structures are defined in rfc7798 section 4.4.
+ * Four different payload structures are defined in rfc7798.
  * Ref: https://datatracker.ietf.org/doc/html/rfc7798#section-4.4
  *
  * 1. Single NAL unit packet
@@ -178,8 +180,7 @@ const UINT8 H265_RTP_FU_HEADER_FU_TYPE_SIZE_BITS;
  * Temporal Scalability Control Information (TSCI).
  */
 
-STATUS createPayloadForH265(UINT32, PBYTE, UINT32, PBYTE, PUINT32, PUINT32, PUINT32);
-STATUS createH265PayloadFromNalu(UINT32, PBYTE, UINT32, PPayloadArray, PUINT32, PUINT32);
+STATUS createPayloadForH265AnnexB(UINT32, PBYTE, UINT32, PBYTE, PUINT32, PUINT32, PUINT32);
 STATUS depayH265FromRtpPayload(PBYTE pRawPacket, UINT32 packetLength, PBYTE pNaluData, PUINT32 pNaluLength, PBOOL pIsStart);
 
 #ifdef __cplusplus

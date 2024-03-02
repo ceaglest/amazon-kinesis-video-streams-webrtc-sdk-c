@@ -223,9 +223,14 @@ STATUS getNextNaluLength(PBYTE nalus, UINT32 nalusLength, PUINT32 pStart, PUINT3
  * --------
  *
  * Instantaneous Decoder Refresh (IDR) with an Access Unit Delimiter (AUD)
- * [ 0 [VPS] [SPS] [PPS] [SEI] [IDR] [AUD] ] [ 1 ... ]
+ * [ [AUD] [VPS] [SPS] [PPS] [SEI] [IDR] ] [ 1 [AUD] ... ] ...
+ *
  * Predicted (P) with a delimiter
- * [ N [P] [AUD] ] [ N + 1 ... [ .. ] ]
+ * .. [ [AUD] [P] ] [ [AUD] ... ] ...
+ *
+ * End of sequence.
+ * .. [ [ AUD ] [ P ] ] [ EOS ] [ [ AUD ] [ VPS ] [ SPS ] [ PPS ] [ IDR ] ] ...
+ *
  */
 STATUS getNextH265AccessUnitLength(PBYTE nalus, UINT32 nalusLength, PUINT32 pStart, PUINT32 pNaluLength)
 {
@@ -236,34 +241,32 @@ STATUS getNextH265AccessUnitLength(PBYTE nalus, UINT32 nalusLength, PUINT32 pSta
     UINT32 accessUnitLength = 0;
     UINT32 startIndex = 0;
     bool endOfAccessUnit = false;
+    bool startOfAccessUnit = false;
 
     do {
         CHK_STATUS(getNextNaluLength(curPtrInNalus, remainNalusLength, &startIndex, &nextNaluLength));
         
         /*
-         * Parse the type of the NALU from the header.
-         *
-         * nal_unit_header {
-         *   forbidden_zero_bit: 0
-         *   nal_unit_type: 32
-         *   nuh_layer_id: 0
-         *   nuh_temporal_id_plus1: 1
-         * }
-         * forbidden_zero_bit  f(1)
-         * nal_unit_type  u(6)
-         * nuh_layer_id  u(6)
-         * nuh_temporal_id_plus1  u(3)
+         * Parse the type of the NALU from the header for basic seeking using delimiters.
          */
         UINT8 nalUnitTypeMask = (UINT8) 0x7E;
         UINT8 naluType = (*(curPtrInNalus + startIndex) & nalUnitTypeMask) >> 1;
-        if (naluType == H265_NALU_TYPE_AUD_NUT ||
-            naluType == H265_NALU_TYPE_EOS_NUT ||
-            naluType == H265_NALU_TYPE_EOB_NUT) {
+        if (naluType == H265_NALU_TYPE_AUD_NUT) {
+            if (startOfAccessUnit) {
+                // Second AUD ends the first AU.
+                endOfAccessUnit = true;
+            } else {
+                startOfAccessUnit = true;
+            }
+        } else if (naluType == H265_NALU_TYPE_EOS_NUT || naluType == H265_NALU_TYPE_EOB_NUT) {
             endOfAccessUnit = true;
         }
-        curPtrInNalus += startIndex + nextNaluLength;
-        remainNalusLength -= startIndex + nextNaluLength;
-        accessUnitLength += startIndex + nextNaluLength;
+
+        if (!endOfAccessUnit) {
+            curPtrInNalus += startIndex + nextNaluLength;
+            remainNalusLength -= startIndex + nextNaluLength;
+            accessUnitLength += startIndex + nextNaluLength;
+        }
     } while (!endOfAccessUnit && remainNalusLength > 0);
 
     *pStart = 0;
