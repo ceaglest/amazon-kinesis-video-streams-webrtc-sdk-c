@@ -450,7 +450,7 @@ UINT8 getH265NalusThatFitInAggregationPacket(UINT32 mtu,
                                              UINT8 nalusSize)
 {
     UINT8 nalusThatFitInAp = 0;
-    UINT8 bytesRemainingInAp = mtu - H265_RTP_PAYLOAD_HEADER_SIZE_BYTES;
+    UINT32 bytesRemainingInAp = mtu - H265_RTP_PAYLOAD_HEADER_SIZE_BYTES;
     for (UINT8 naluIndex = 0; naluIndex < nalusSize; naluIndex++) {
         bytesRemainingInAp -= H265_RTP_AP_NALU_SIZE_BYTES;
 
@@ -545,10 +545,10 @@ STATUS createH265AggregationPacketPayloadFromNALUs(UINT32 mtu,
             STATUS_BUFFER_TOO_SMALL);
 
         // TODO: Migrate to DLOGS, this is very noisy.
-        DLOGI("[RtpH265Payloader] Create Aggregation Packet payload. Type: %s, TID: %" PRIu8 ", length: %d",
+        DLOGI("[RtpH265Payloader] Create Aggregation Packet payload. First type: %s, TID: %" PRIu8 ", payload length: %d",
               getH265NaluTypeString(nalus[0].header.type),
-              nalus[0].header.temporalId,
-              nalus[0].length);
+              lowestTid,
+              payloadLength);
         
         /*
          * Construct the PayloadHdr for the RTP payload.
@@ -587,11 +587,7 @@ STATUS createH265AggregationPacketPayloadFromNALUs(UINT32 mtu,
             // Copy the NALU size header.
             UINT32 naluSize = nalus[i].length;
             CHK_ERR(naluSize <= UINT16_MAX, STATUS_RTP_INVALID_NALU, "The NALU is too large to aggregate.");
-            
-            UINT8 sizeHeader[H265_RTP_AP_NALU_SIZE_BYTES];
-            sizeHeader[0] = (naluSize >> 8) & UINT8_MAX;
-            sizeHeader[1] = naluSize & UINT8_MAX;
-            MEMCPY(pPayload, sizeHeader, H265_RTP_AP_NALU_SIZE_BYTES);
+            putUnalignedInt16BigEndian((PINT16) pPayload, (UINT16)naluSize);
             
             // Copy the NALU payload (header + body)
             // Note: The DONL field is not present because the library does not negotiate frame reordering.
