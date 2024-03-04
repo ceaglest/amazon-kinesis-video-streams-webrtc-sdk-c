@@ -191,6 +191,25 @@ PCHAR getH265NaluTypeString(H265_NALU_TYPE type) {
     }
 }
 
+UINT8 getH265NalusThatFitInAggregationPacket(UINT32 mtu,
+                                             const H265Nalu *nalus,
+                                             UINT8 nalusSize)
+{
+    UINT8 nalusThatFitInAp = 0;
+    UINT32 bytesRemainingInAp = mtu - H265_RTP_PAYLOAD_HEADER_SIZE_BYTES;
+    for (UINT8 naluIndex = 0; naluIndex < nalusSize; naluIndex++) {
+        bytesRemainingInAp -= H265_RTP_AP_NALU_SIZE_BYTES;
+
+        const H265Nalu nalu = nalus[naluIndex];
+        if (nalu.length > bytesRemainingInAp) {
+            break;
+        }
+        nalusThatFitInAp++;
+        bytesRemainingInAp -= nalu.length;
+    }
+    return nalusThatFitInAp;
+}
+
 STATUS createPayloadForH265AnnexB(UINT32 mtu,
                                   PBYTE accessUnit,
                                   UINT32 acessUnitLength,
@@ -214,23 +233,20 @@ STATUS createPayloadForH265AnnexB(UINT32 mtu,
     H265Nalu parsedAccessUnits[H265_ACCESS_UNIT_MAX_SIZE];
 
     CHK(accessUnit != NULL && pPayloadSubLenSize != NULL && pPayloadLength != NULL && (sizeCalculationOnly || pPayloadSubLength != NULL), STATUS_NULL_ARG);
-    CHK(mtu > FU_A_HEADER_SIZE, STATUS_RTP_INPUT_MTU_TOO_SMALL);
 
+    payloadArray.payloadLength = 0;
+    payloadArray.payloadSubLenSize = 0;
     if (sizeCalculationOnly) {
-        payloadArray.payloadLength = 0;
-        payloadArray.payloadSubLenSize = 0;
         payloadArray.maxPayloadLength = 0;
         payloadArray.maxPayloadSubLenSize = 0;
     } else {
-        payloadArray.payloadLength = *pPayloadLength;
-        payloadArray.payloadSubLenSize = *pPayloadSubLenSize;
         payloadArray.maxPayloadLength = *pPayloadLength;
         payloadArray.maxPayloadSubLenSize = *pPayloadSubLenSize;
     }
     payloadArray.payloadBuffer = payloadBuffer;
     payloadArray.payloadSubLength = pPayloadSubLength;
 
-    // The NALUs are in Annex-B format. Skip the start codes ('{00 00 00 01}') which are not packetized.
+    // The NALUs are in Annex-B format. Skip the start codes ('{00 00 01}' or '{00 00 00 01}') which are not packetized.
     do {
         CHK_STATUS(getNextNaluLength(curPtrInNalus, remainNalusLength, &startIndex, &nextNaluLength));
         CHK_ERR(currentNaluIndex < H265_ACCESS_UNIT_MAX_SIZE, STATUS_RTP_H265_ACCESS_UNIT_TOO_LARGE,
@@ -271,10 +287,6 @@ STATUS createPayloadForH265AnnexB(UINT32 mtu,
         payloadArray.payloadSubLenSize += auPayloadsSubLenSize;
     } else {
         CHK_STATUS(createH265PayloadFromAu(mtu, parsedAccessUnits, currentNaluIndex, &payloadArray, &auPayloadsLength, &auPayloadsSubLenSize));
-        payloadArray.payloadBuffer += auPayloadsLength;
-        payloadArray.payloadSubLength += auPayloadsSubLenSize;
-        payloadArray.maxPayloadLength -= auPayloadsLength;
-        payloadArray.maxPayloadSubLenSize -= auPayloadsSubLenSize;
     }
 
 CleanUp:
@@ -305,25 +317,38 @@ STATUS createH265PayloadFromAu(UINT32 mtu,
     for (UINT8 naluIndex = 0; naluIndex < accessUnitSize; naluIndex++) {
         UINT32 singlePayloadLength = 0;
         UINT32 singlePayloadSubLenSize = 0;
-        const H265Nalu nalu = accessUnit[naluIndex];
-        H265_NALU_TYPE naluType = nalu.header.type;
+        const H265Nalu *nalu = &accessUnit[naluIndex];
+        H265_NALU_TYPE naluType = nalu->header.type;
         
         if (naluType == H265_NALU_TYPE_AUD_NUT || naluType == H265_NALU_TYPE_EOS_NUT) {
             // With SRST the RTP marker bit indicating the end of a frame is equivalent to the AUD starting a new one.
             // Similarly, a new keyframe can be used to infer the end of the previous coded video sequence.
-        } else if (nalu.length <= mtu) {
-            UINT8 nalusThatFitInAp = getH265NalusThatFitInAggregationPacket(mtu, &(accessUnit[naluIndex]), accessUnitSize - naluIndex);
+        } else if (nalu->length <= mtu) {
+            UINT8 nalusThatFitInAp = getH265NalusThatFitInAggregationPacket(mtu, nalu, accessUnitSize - naluIndex);
             if (nalusThatFitInAp > 1) {
-                CHK_STATUS(createH265AggregationPacketPayloadFromNALUs(mtu, &accessUnit[naluIndex], nalusThatFitInAp, pPayloadArray, &singlePayloadLength, &singlePayloadSubLenSize));
+                CHK_STATUS(createH265AggregationPacketPayloadFromNALUs(mtu, nalu, nalusThatFitInAp,
+                                                                       pPayloadArray, &singlePayloadLength,
+                                                                       &singlePayloadSubLenSize));
+                // Skip the already aggregated NALUs.
                 naluIndex += nalusThatFitInAp - 1;
             } else {
-                CHK_STATUS(createH265SingleNaluPacketPayloadFromNALU(mtu, &accessUnit[naluIndex], pPayloadArray, &singlePayloadLength, &singlePayloadSubLenSize));
+                CHK_STATUS(createH265SingleNaluPacketPayloadFromNALU(mtu, nalu, pPayloadArray,
+                                                                     &singlePayloadLength, &singlePayloadSubLenSize));
             }
         } else {
-            CHK_STATUS(createH265FragmentationUnitPayloadsFromNALU(mtu, &nalu, pPayloadArray, &singlePayloadLength, &singlePayloadSubLenSize));
+            CHK_STATUS(createH265FragmentationUnitPayloadsFromNALU(mtu, nalu, pPayloadArray,
+                                                                   &singlePayloadLength, &singlePayloadSubLenSize));
         }
         *filledLength += singlePayloadLength;
         *filledSubLenSize += singlePayloadSubLenSize;
+        
+        if (!sizeCalculationOnly) {
+            pPayloadArray->payloadBuffer += singlePayloadLength;
+            pPayloadArray->payloadLength += singlePayloadLength;
+            pPayloadArray->maxPayloadLength -= singlePayloadLength;
+            pPayloadArray->payloadSubLenSize += singlePayloadSubLenSize;
+            pPayloadArray->maxPayloadSubLenSize -= singlePayloadSubLenSize;
+        }
     }
 
 CleanUp:
@@ -354,8 +379,9 @@ STATUS createH265FragmentationUnitPayloadsFromNALU(UINT32 mtu,
     PBYTE pCurPtrInNalu = nalu->data;
     UINT32 curPayloadSize = 0;
     UINT32 payloadLength = 0;
+    UINT32 payloadSubLenSizeIndex = pPayloadArray ? pPayloadArray->payloadSubLenSize : 0;
     UINT32 payloadSubLenSize = 0;
-
+    
     if (!sizeCalculationOnly) {
         pPayload = pPayloadArray->payloadBuffer;
         
@@ -423,10 +449,11 @@ STATUS createH265FragmentationUnitPayloadsFromNALU(UINT32 mtu,
             // Write the payload.
             MEMCPY(pPayload + H265_RTP_PAYLOAD_HEADER_SIZE_BYTES + H265_RTP_FU_HEADER_SIZE_BYTES, pCurPtrInNalu, curPayloadSize);
             
-            pPayloadArray->payloadSubLength[payloadSubLenSize - 1] = H265_RTP_PAYLOAD_HEADER_SIZE_BYTES + H265_RTP_FU_HEADER_SIZE_BYTES + curPayloadSize;
-            pPayload += pPayloadArray->payloadSubLength[payloadSubLenSize - 1];
+            pPayloadArray->payloadSubLength[payloadSubLenSizeIndex] = H265_RTP_PAYLOAD_HEADER_SIZE_BYTES + H265_RTP_FU_HEADER_SIZE_BYTES + curPayloadSize;
+            pPayload += pPayloadArray->payloadSubLength[payloadSubLenSizeIndex];
         }
         
+        payloadSubLenSizeIndex += 1;
         pCurPtrInNalu += curPayloadSize;
         remainingNaluLength -= curPayloadSize;
     }
@@ -445,25 +472,6 @@ CleanUp:
     return retStatus;
 }
 
-UINT8 getH265NalusThatFitInAggregationPacket(UINT32 mtu,
-                                             const H265Nalu *nalus,
-                                             UINT8 nalusSize)
-{
-    UINT8 nalusThatFitInAp = 0;
-    UINT32 bytesRemainingInAp = mtu - H265_RTP_PAYLOAD_HEADER_SIZE_BYTES;
-    for (UINT8 naluIndex = 0; naluIndex < nalusSize; naluIndex++) {
-        bytesRemainingInAp -= H265_RTP_AP_NALU_SIZE_BYTES;
-
-        const H265Nalu nalu = nalus[naluIndex];
-        if (nalu.length > bytesRemainingInAp) {
-            break;
-        }
-        nalusThatFitInAp++;
-        bytesRemainingInAp -= nalu.length;
-    }
-    return nalusThatFitInAp;
-}
-
 STATUS createH265SingleNaluPacketPayloadFromNALU(UINT32 mtu,
                                                  const H265Nalu *nalu,
                                                  PPayloadArray pPayloadArray,
@@ -479,6 +487,8 @@ STATUS createH265SingleNaluPacketPayloadFromNALU(UINT32 mtu,
     BOOL sizeCalculationOnly = (pPayloadArray == NULL);
     
     if (!sizeCalculationOnly) {
+        UINT32 payloadSubLenSizeIndex = pPayloadArray->payloadSubLenSize;
+        
         CHK(*filledSubLenSize <= pPayloadArray->maxPayloadSubLenSize && *filledLength <= pPayloadArray->maxPayloadLength,
             STATUS_BUFFER_TOO_SMALL);
 
@@ -489,8 +499,8 @@ STATUS createH265SingleNaluPacketPayloadFromNALU(UINT32 mtu,
               nalu->length);
 
         // The DONL field is not present because the library does not negotiate frame reordering.
-        MEMCPY(pPayloadArray->payloadBuffer, nalu->data, nalu->length);
-        pPayloadArray->payloadSubLength[payloadSubLenSize - 1] = nalu->length;
+        MEMCPY(pPayloadArray->payloadBuffer, nalu->data, payloadLength);
+        pPayloadArray->payloadSubLength[payloadSubLenSizeIndex] = payloadLength;
     }
 
 CleanUp:
@@ -539,6 +549,7 @@ STATUS createH265AggregationPacketPayloadFromNALUs(UINT32 mtu,
     }
 
     if (!sizeCalculationOnly) {
+        UINT32 payloadSubLenSizeIndex = pPayloadArray->payloadSubLenSize;
         pPayload = pPayloadArray->payloadBuffer;
 
         CHK(*filledSubLenSize <= pPayloadArray->maxPayloadSubLenSize && *filledLength <= pPayloadArray->maxPayloadLength,
@@ -580,7 +591,7 @@ STATUS createH265AggregationPacketPayloadFromNALUs(UINT32 mtu,
          * Note: The DONL field is skipped when sprop-max-don-diff == 0.
          */
         MEMCPY(pPayload, payloadHdr, H265_RTP_PAYLOAD_HEADER_SIZE_BYTES);
-        pPayloadArray->payloadSubLength[payloadSubLenSize - 1] += H265_RTP_PAYLOAD_HEADER_SIZE_BYTES;
+        pPayloadArray->payloadSubLength[payloadSubLenSizeIndex] = H265_RTP_PAYLOAD_HEADER_SIZE_BYTES;
         pPayload += H265_RTP_PAYLOAD_HEADER_SIZE_BYTES;
         
         for (UINT8 i = 0; i < nalusSize; i++) {
@@ -591,9 +602,9 @@ STATUS createH265AggregationPacketPayloadFromNALUs(UINT32 mtu,
             
             // Copy the NALU payload (header + body)
             // Note: The DONL field is not present because the library does not negotiate frame reordering.
-            MEMCPY(pPayload + H265_RTP_PAYLOAD_HEADER_SIZE_BYTES, nalus[i].data, nalus[i].length);
-            pPayloadArray->payloadSubLength[payloadSubLenSize - 1] += nalus[i].length + H265_RTP_PAYLOAD_HEADER_SIZE_BYTES;
-            pPayload += nalus[i].length + H265_RTP_PAYLOAD_HEADER_SIZE_BYTES;
+            MEMCPY(pPayload + H265_RTP_AP_NALU_SIZE_BYTES, nalus[i].data, naluSize);
+            pPayloadArray->payloadSubLength[payloadSubLenSizeIndex] += H265_RTP_AP_NALU_SIZE_BYTES + naluSize;
+            pPayload += H265_RTP_AP_NALU_SIZE_BYTES + naluSize;
         }
     }
 
