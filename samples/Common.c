@@ -533,13 +533,11 @@ STATUS createSampleStreamingSession(PSampleConfiguration pSampleConfiguration, P
     // Add a SendRecv Transceiver of type video
     videoTrack.kind = MEDIA_STREAM_TRACK_KIND_VIDEO;
     if (SAMPLE_ENABLE_H265_VIDEO) {
-        // TODO: There is no support for reception of H.265 video.
         videoTrack.codec = RTC_CODEC_H265_TX_MODE_SRST;
-        videoRtpTransceiverInit.direction = RTC_RTP_TRANSCEIVER_DIRECTION_SENDONLY;
     } else {
         videoTrack.codec = RTC_CODEC_H264_PROFILE_42E01F_LEVEL_ASYMMETRY_ALLOWED_PACKETIZATION_MODE;
-        videoRtpTransceiverInit.direction = RTC_RTP_TRANSCEIVER_DIRECTION_SENDRECV;
     }
+    videoRtpTransceiverInit.direction = RTC_RTP_TRANSCEIVER_DIRECTION_SENDRECV;
     STRCPY(videoTrack.streamId, "myKvsVideoStream");
     STRCPY(videoTrack.trackId, "myVideoTrack");
     CHK_STATUS(addTransceiver(pSampleStreamingSession->pPeerConnection, &videoTrack, &videoRtpTransceiverInit,

@@ -9,6 +9,10 @@ const UINT8 H265_RTP_AP_NALU_SIZE_BYTES = 2;
 const UINT8 H265_RTP_FU_HEADER_FU_TYPE_SIZE_BITS = 6;
 // Worst case: A 16-slice IDR with VPS, SPS, PPS, SEI, AUD.
 const UINT8 H265_ACCESS_UNIT_MAX_SIZE = 21;
+// If aggregation packets should be used or not.
+const bool H265_RTP_PAYLOADER_USE_AGGREGATION_PACKETS = false;
+
+const BYTE H265_NALU_START_4_BYTE_CODE[] = {0x00, 0x00, 0x00, 0x01};
 
 /* A parsed version of a Network Abstraction Layer Unit header. */
 typedef struct H265NaluHeader {
@@ -158,8 +162,8 @@ PCHAR getH265NaluTypeString(H265_NALU_TYPE type) {
             return "AP";
         case H265_NALU_TYPE_FU:
             return "FU";
-        case H265_NALU_TYPE_UNSPEC50:
-            return "UNSPEC50";
+        case H265_NALU_TYPE_PACI:
+            return "PACI";
         case H265_NALU_TYPE_UNSPEC51:
             return "UNSPEC51";
         case H265_NALU_TYPE_UNSPEC52:
@@ -325,7 +329,7 @@ STATUS createH265PayloadFromAu(UINT32 mtu,
             // Similarly, a new keyframe can be used to infer the end of the previous coded video sequence.
         } else if (nalu->length <= mtu) {
             UINT8 nalusThatFitInAp = getH265NalusThatFitInAggregationPacket(mtu, nalu, accessUnitSize - naluIndex);
-            if (nalusThatFitInAp > 1) {
+            if (H265_RTP_PAYLOADER_USE_AGGREGATION_PACKETS && nalusThatFitInAp > 1) {
                 CHK_STATUS(createH265AggregationPacketPayloadFromNALUs(mtu, nalu, nalusThatFitInAp,
                                                                        pPayloadArray, &singlePayloadLength,
                                                                        &singlePayloadSubLenSize));
@@ -537,7 +541,7 @@ STATUS createH265AggregationPacketPayloadFromNALUs(UINT32 mtu,
     
     UINT8 lowestTid = UINT8_MAX;
     // TODO: Parse and check the Fbit. It's normally set to 0.
-    bool forbiddenBit = false;
+    UINT8 forbiddenBit = 0;
     // TODO: Parse and check the layerId. It's normally set to 0 but can be set to higher values in extensions to HEVC.
     UINT8 lowestLayerId = 0;
     payloadLength += H265_RTP_PAYLOAD_HEADER_SIZE_BYTES;
@@ -577,12 +581,10 @@ STATUS createH265AggregationPacketPayloadFromNALUs(UINT32 mtu,
          * |F| Type (48) |  LayerId  | TID |
          * +-------------+-----------------+
          */
-        // TODO: Use the parsed lowestLayerId instead of copying from the first NALU.
-        memcpy(&payloadHdr, nalus[0].data, H265_NALU_HEADER_SIZE_BYTES);
         UINT8 apTypeShifted = (H265_NALU_TYPE_AP << 1);
-        UINT8 layerIdHigh = (payloadHdr[0] & H265_NALU_HEADER_MASK_LAYER_ID_HIGH);
+        UINT8 layerIdHigh = (lowestLayerId >> 7) & H265_NALU_HEADER_MASK_LAYER_ID_HIGH;
         UINT8 fBitShifted = (forbiddenBit & H265_NALU_HEADER_MASK_FBIT);
-        UINT8 layerIdLowShifted = (payloadHdr[1] & H265_NALU_HEADER_MASK_LAYER_ID_LOW);
+        UINT8 layerIdLowShifted = (lowestLayerId & H265_NALU_HEADER_MASK_LAYER_ID_LOW);
         payloadHdr[0] = fBitShifted | apTypeShifted | layerIdHigh;
         payloadHdr[1] = layerIdLowShifted | lowestTid;
         
@@ -623,13 +625,65 @@ CleanUp:
     return retStatus;
 }
 
-STATUS depayH265FromRtpPayload(PBYTE pRawPacket, UINT32 packetLength, PBYTE pNaluData, PUINT32 pNaluLength, PBOOL pIsStart) {
+STATUS depayH265AnnexBFromRtpPayload(PBYTE pRawPacket, UINT32 packetLength, PBYTE pNaluData, PUINT32 pNaluLength, PBOOL pIsStart) {
     STATUS retStatus = STATUS_SUCCESS;
-
-    // TODO: Implement de-payloading of SRST H.265 video transmissions.
-    CHK(FALSE, STATUS_NOT_IMPLEMENTED);
+    
+    BOOL sizeCalculationOnly = (pNaluData == NULL);
+    BOOL isStartingPacket = FALSE;
+    PBYTE pCurPtr = pRawPacket;
+    UINT32 naluLength = 0;
+    H265_NALU_TYPE naluType = (*pRawPacket & H265_NALU_HEADER_MASK_TYPE) >> 1;
+    
+    CHK(pRawPacket != NULL && pNaluLength != NULL, STATUS_NULL_ARG);
+    CHK(packetLength > 0, retStatus);
+    
+    if (naluType == H265_NALU_TYPE_AP) {
+        // TODO: Implement de-payloading of APs.
+        CHK(FALSE, STATUS_NOT_IMPLEMENTED);
+    } else if (naluType == H265_NALU_TYPE_FU) {
+        // TODO: Implement de-payloading of FUs.
+        CHK(FALSE, STATUS_NOT_IMPLEMENTED);
+    } else if (naluType == H265_NALU_TYPE_PACI) {
+        // TODO: Implement de-payloading of PACI packets.
+        CHK(FALSE, STATUS_NOT_IMPLEMENTED);
+    } else if (naluType >= H265_NALU_TYPE_UNSPEC51) {
+        // Drop the unspecified packet.
+        naluLength = 0;
+        isStartingPacket = true;
+    } else {
+        naluLength = packetLength + sizeof(H265_NALU_START_4_BYTE_CODE);
+        isStartingPacket = true;
+    }
+    
+    // Return early with the size if given buffer is NULL
+    CHK(!sizeCalculationOnly, retStatus);
+    CHK(naluLength <= *pNaluLength, STATUS_BUFFER_TOO_SMALL);
+    
+    if (isStartingPacket) {
+        MEMCPY(pNaluData, H265_NALU_START_4_BYTE_CODE, SIZEOF(H265_NALU_START_4_BYTE_CODE));
+        naluLength -= SIZEOF(H265_NALU_START_4_BYTE_CODE);
+        pNaluData += SIZEOF(H265_NALU_START_4_BYTE_CODE);
+    }
+    DLOGI("Single NALU type %s start %d len %d", getH265NaluTypeString(naluType), isStartingPacket, packetLength);
+    MEMCPY(pNaluData, pRawPacket, naluLength);
+    if (isStartingPacket) {
+        naluLength += SIZEOF(H265_NALU_START_4_BYTE_CODE);
+    }
+    DLOGS("Wrote naluLength %d isStartingPacket %d", naluLength, isStartingPacket);
 
 CleanUp:
+    if (STATUS_FAILED(retStatus) && sizeCalculationOnly) {
+        naluLength = 0;
+    }
+
+    if (pNaluLength != NULL) {
+        *pNaluLength = naluLength;
+    }
+
+    if (pIsStart != NULL) {
+        *pIsStart = isStartingPacket;
+    }
+
     LEAVES();
     return retStatus;
 }

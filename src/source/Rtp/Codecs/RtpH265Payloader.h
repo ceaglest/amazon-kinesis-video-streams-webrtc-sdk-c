@@ -73,7 +73,7 @@ typedef enum : UINT8 {
     H265_NALU_TYPE_AP = 48,
     /** A Fragmentation Unit Packet that fragments a single NALU across multiple RTP packets. **/
     H265_NALU_TYPE_FU = 49,
-    H265_NALU_TYPE_UNSPEC50 = 50,
+    H265_NALU_TYPE_PACI = 50,
     H265_NALU_TYPE_UNSPEC51 = 51,
     H265_NALU_TYPE_UNSPEC52 = 52,
     H265_NALU_TYPE_UNSPEC53 = 53,
@@ -98,7 +98,7 @@ typedef enum : UINT8 {
     H265_NALU_HEADER_MASK_TYPE = 0x7E,
     /* Check if the (shifted) type field is a VCL or non-VCL NALU. */
     H265_NALU_HEADER_MASK_TYPE_VCL_NALU = 0x20,
-    H265_NALU_HEADER_MASK_LAYER_ID_HIGH = 0x1,
+    H265_NALU_HEADER_MASK_LAYER_ID_HIGH = 0x01,
     H265_NALU_HEADER_MASK_LAYER_ID_LOW = 0xF8,
     H265_NALU_HEADER_MASK_TID = 0x07,
 } H265_NALU_HEADER_MASK;
@@ -181,7 +181,7 @@ const UINT8 H265_ACCESS_UNIT_MAX_SIZE;
  */
 
 STATUS createPayloadForH265AnnexB(UINT32, PBYTE, UINT32, PBYTE, PUINT32, PUINT32, PUINT32);
-STATUS depayH265FromRtpPayload(PBYTE pRawPacket, UINT32 packetLength, PBYTE pNaluData, PUINT32 pNaluLength, PBOOL pIsStart);
+STATUS depayH265AnnexBFromRtpPayload(PBYTE pRawPacket, UINT32 packetLength, PBYTE pNaluData, PUINT32 pNaluLength, PBOOL pIsStart);
 
 #ifdef __cplusplus
 }

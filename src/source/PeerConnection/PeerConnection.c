@@ -1293,7 +1293,7 @@ STATUS addTransceiver(PRtcPeerConnection pPeerConnection, PRtcMediaStreamTrack p
             break;
 
         case RTC_CODEC_H265_TX_MODE_SRST:
-            depayFunc = depayH265FromRtpPayload;
+            depayFunc = depayH265AnnexBFromRtpPayload;
             clockRate = VIDEO_CLOCKRATE;
             break;
         

@@ -142,8 +142,7 @@ STATUS setPayloadTypesForOffer(PHashTable codecTable)
     CHK_STATUS(hashTableUpsert(codecTable, RTC_CODEC_VP8, DEFAULT_PAYLOAD_VP8));
     CHK_STATUS(hashTableUpsert(codecTable, RTC_CODEC_OPUS, DEFAULT_PAYLOAD_OPUS));
     CHK_STATUS(hashTableUpsert(codecTable, RTC_CODEC_H264_PROFILE_42E01F_LEVEL_ASYMMETRY_ALLOWED_PACKETIZATION_MODE, DEFAULT_PAYLOAD_H264));
-    // TODO: Implement reception of H.265 or add the codec only to offers that contain recvonly video.
-    // CHK_STATUS(hashTableUpsert(codecTable, RTC_CODEC_H265_TX_MODE_SRST, DEFAULT_PAYLOAD_H265));
+    CHK_STATUS(hashTableUpsert(codecTable, RTC_CODEC_H265_TX_MODE_SRST, DEFAULT_PAYLOAD_H265));
 
 CleanUp:
     return retStatus;
@@ -492,6 +491,11 @@ UINT64 getH265FmtpScore(PCHAR fmtp)
     // The library prefers main tier to high tier for RTC use cases.
     if (tierFlag == H265_TIER_MAIN) {
         score += 1;
+    }
+    
+    // This combination is invalid.
+    if (levelId <= H265_LEVEL_3_1 && tierFlag == H265_TIER_HIGH) {
+        return 0;
     }
     
     // The library prefers Main profile (8 bits per channel, 4:2:0 chroma subsampling).
